@@ -200,16 +200,14 @@ namespace taskFlow.Repositories
         {
             try
             {
-                // Validate AssigneeId if provided
                 if (createTaskDto.AssigneeId.HasValue)
                 {
                     var userExistsSql = "SELECT 1 FROM users WHERE id = @UserId";
-                    var userExists = await QuerySingleAsync<int?>(userExistsSql, new { UserId = createTaskDto.AssigneeId });
-                    if (userExists == null)
+                    var userExists = await QueryAsync<int?>(userExistsSql, new { UserId = createTaskDto.AssigneeId });
+                    if (userExists.Count() == 0)
                         return Response<Guid>.Failure("Invalid assignee ID: User does not exist");
                 }
 
-                // Validate DueDate if provided
                 if (createTaskDto.DueDate.HasValue && createTaskDto.DueDate.Value <= DateTime.UtcNow)
                 {
                     return Response<Guid>.Failure("Due date must be in the future");
@@ -223,7 +221,12 @@ namespace taskFlow.Repositories
                         @Title, 
                         @Description,
                         CAST(@Status AS task_status),
-                        @AssigneeId,
+                        CASE 
+                            WHEN @AssigneeId IS NOT NULL 
+                                AND EXISTS (SELECT 1 FROM users WHERE id = @AssigneeId)
+                            THEN @AssigneeId
+                            ELSE NULL
+                        END,
                         CAST(@Priority AS task_priority),
                         @ProjectId, 
                         @CreatedAt, 
@@ -257,6 +260,62 @@ namespace taskFlow.Repositories
             {
                 Console.WriteLine($"Error creating task: {ex.Message}");
                 return Response<Guid>.Failure($"Error creating task: {ex.Message}");
+            }
+        }
+       public async Task<Response<Guid>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
+        {
+            try
+            {
+                // Validate AssigneeId if provided
+                if (updateTaskDto.AssigneeId.HasValue)
+                {
+                    const string userExistsSql = "SELECT 1 FROM users WHERE id = @UserId";
+                    // QueryAsync returns a collection — check if any row came back
+                    var userExists = await QueryAsync<int>(userExistsSql, new { UserId = updateTaskDto.AssigneeId.Value });
+                    if (!userExists.Any())
+                        return Response<Guid>.Failure("Invalid assignee ID: User does not exist");
+                }
+
+                // Only validate DueDate if the caller is explicitly changing it
+                if (updateTaskDto.DueDate.HasValue && updateTaskDto.DueDate.Value <= DateTime.UtcNow)
+                    return Response<Guid>.Failure("Due date must be in the future");
+
+                const string sql = @"
+                    UPDATE tasks
+                    SET
+                        title       = COALESCE(@Title, title),
+                        description = COALESCE(@Description, description),
+                        assignee_id = COALESCE(CAST(@AssigneeId AS uuid), assignee_id),
+                        priority    = COALESCE(CAST(@Priority AS task_priority), priority),
+                        status      = COALESCE(CAST(@Status AS task_status), status),
+                        due_date    = COALESCE(CAST(@DueDate AS timestamp), due_date),
+                        updated_at  = NOW()
+                    WHERE id = @TaskId
+                    RETURNING id;
+                ";
+
+                var parameters = new
+                {
+                    TaskId      = taskId,
+                    Title       = updateTaskDto.Title,
+                    Description = updateTaskDto.Description,
+                    AssigneeId  = updateTaskDto.AssigneeId,
+                    Priority    = updateTaskDto.Priority,
+                    Status      = updateTaskDto.Status,
+                    DueDate     = updateTaskDto.DueDate,
+                };
+
+                var result = await ExecuteScalarAsync(sql, parameters);
+
+                if (result is null || result == DBNull.Value)
+                    return Response<Guid>.Failure("Task not found or you do not have permission to update it");
+
+                var updatedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
+                return Response<Guid>.Success(updatedId, "Task updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return Response<Guid>.Failure("An unexpected error occurred while updating the task");
             }
         }
     }

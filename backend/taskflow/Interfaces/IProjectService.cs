@@ -12,5 +12,7 @@ namespace taskFlow.Interfaces
         public Task<Response<bool>> DeleteProject(DeleteProjectDto deleteProjectDto);
         public Task<Response<IEnumerable<Tasks>>> GetTasksByProjectIdAsync(Guid projectId, Guid? assigneeId, string? status);
         public Task<Response<Guid>> CreateTask(CreateTaskDto createTaskDto, Guid projectId, Guid userId);
+        public  Task<Response<Guid>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId);
+
     }
 }

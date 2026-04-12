@@ -137,6 +137,19 @@ namespace taskFlow.Controllers
                 return BadRequest(response);
 
             return Ok(response);
-    }
+        }
+         [HttpPatch("/task/{taskId}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateTask(Guid taskId, [FromBody] UpdateTaskDto updateTaskDto)
+        {
+            if (updateTaskDto == null)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid task data", Data = null });
+
+            var response = await _projectService.UpdateTask(updateTaskDto, taskId);
+            if (!response.Status)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
     }
 }

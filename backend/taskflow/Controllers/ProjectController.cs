@@ -61,5 +61,21 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
+        [HttpGet("project/{projectId}")]
+        [Authorize]
+        public async Task<IActionResult> GetProjectWithTasks(Guid projectId)
+        {
+            if (projectId == Guid.Empty)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid project ID", Data = null });
+
+            var response = await _projectService.GetProjectWithTasks(projectId);
+            if (!response.Status)
+                return BadRequest(response);
+
+            if (response.Data == null || response.Data.Tasks == null)
+                return NotFound(new Response<object> { Status = false, Message = $"Project with ID {projectId} not found", Data = null });
+
+            return Ok(response);
+        }
     }
 }

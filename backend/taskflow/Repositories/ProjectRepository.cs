@@ -1,32 +1,81 @@
-public class ProjectRepository: IProjectService
-{
-    public ProjectRepository()
-    {
+using taskFlow.Interfaces;
+using taskFlow.Models;
 
-    }
-    public async Task<Projects?> GetProjectByIdAsync(uint id)
+namespace taskFlow.Repositories
+{
+    public class ProjectRepository : DapperRepository<Projects>, IProjectService
     {
-        try
+        public ProjectRepository(string connectionString) : base(connectionString)
         {
-            return null;
         }
-        catch(Exception ex)
+
+        public async Task<Response<IEnumerable<Projects?>>> GetProjectsByUserIdAsync(Guid id)
         {
-            Console.WriteLine($"Error fetching project by ID: {ex.Message}");
-            return null;
+            try
+            {
+                var sql = @"
+                    SELECT DISTINCT 
+                        projects.id AS Id,
+                        projects.name AS Name,
+                        projects.description AS Description,
+                        projects.created_at AS CreatedAt,
+                        projects.owner_id AS OwnerId
+                    FROM projects
+                    LEFT JOIN tasks ON tasks.project_id = projects.id
+                    WHERE 
+                        projects.owner_id = @UserId
+                        OR tasks.assignee_id = @UserId
+                ";
+                var projects = await QueryAsync(sql, new { UserId = id });
+                return Response<IEnumerable<Projects?>>.Success(projects, "Projects retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching projects by user ID: {ex.Message}");
+                return Response<IEnumerable<Projects?>>.Failure($"Error fetching projects: {ex.Message}");
+            }
         }
-    }
-    public async Task<IEnumerable<Projects>> GetAllProjects()
-    {
-        try
+
+        public async Task<Response<IEnumerable<Projects?>>> GetAllProjects()
         {
-            // Implementation here
-            return Enumerable.Empty<Projects>();
+            try
+            {
+                var projects = await GetAllAsync();
+                return Response<IEnumerable<Projects?>>.Success(projects, "All projects retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching all projects: {ex.Message}");
+                return Response<IEnumerable<Projects?>>.Failure($"Error fetching all projects: {ex.Message}");
+            }
         }
-        catch(Exception ex)
+
+        public async Task<Response<int>> CreateProject(CreateProjectDto createProjectDto)
         {
-            Console.WriteLine($"Error fetching all projects: {ex.Message}");
-            return Enumerable.Empty<Projects>();
+            try
+            {
+                var sql = @"
+                    INSERT INTO projects (name, description, created_at, owner_id) 
+                    VALUES (@Name, @Description, @CreatedAt, @OwnerId)
+                    RETURNING id;
+                ";
+
+                var parameters = new
+                {
+                    Name = createProjectDto.ProjectName,
+                    Description = createProjectDto.ProjectDescription,
+                    CreatedAt = DateTime.UtcNow,
+                    OwnerId = Guid.Parse(createProjectDto.CreatedBy)
+                };
+
+                var rowsAffected = await CreateAsync(sql, parameters);
+                return Response<int>.Success(rowsAffected, "Project created successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating project: {ex.Message}");
+                return Response<int>.Failure($"Error creating project: {ex.Message}");
+            }
         }
     }
 }

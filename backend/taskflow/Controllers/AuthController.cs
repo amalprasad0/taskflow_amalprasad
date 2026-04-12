@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using taskFlow.DTOs;
+using taskFlow.Models;
 using taskFlow.Repositories;
 
 namespace taskFlow.Controllers
@@ -18,16 +19,23 @@ namespace taskFlow.Controllers
         public async Task<IActionResult> Register([FromBody] RegisterUserDto user)
         {
             if (user == null || string.IsNullOrWhiteSpace(user.Email))
-                return BadRequest("Username, email, and password are required");
+                return BadRequest(new Response<object> { Status = false, Message = "Email and password are required", Data = null });
 
             var result = await _authRepository.Register(user);
-            return result ? Ok("User registered successfully") : BadRequest("Failed to register user");
+            if (!result.Status)
+                return BadRequest(result);
+
+            return Ok(result);
         }
+
         [HttpPost("Login")]
         public async Task<IActionResult> Login([FromBody] LoginUserDto loginDto)
         {
-            var token = await _authRepository.Login(loginDto);
-            return token != null ? Ok(new { Token = token }) : BadRequest("Invalid email or password");
+            var response = await _authRepository.Login(loginDto);
+            if (!response.Status)
+                return BadRequest(response);
+
+            return Ok(response);
         }
     }
 }

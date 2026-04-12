@@ -1,6 +1,7 @@
 using EvolveDb;
 using Npgsql;
 using taskFlow.Repositories;
+using taskFlow.Interfaces;
 
 DotNetEnv.Env.Load();
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,7 @@ var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddScoped(_ => new AuthRepository(connectionString));
+builder.Services.AddScoped<IProjectService>(_ => new ProjectRepository(connectionString));
 
 var app = builder.Build();
 EnsureDatabaseExists();

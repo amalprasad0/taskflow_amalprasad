@@ -1,5 +1,11 @@
-public interface IProjectService
+using taskFlow.Models;
+
+namespace taskFlow.Interfaces
 {
-    public Task<Projects?> GetProjectByIdAsync(uint id);
-    public Task<IEnumerable<Projects?>> GetAllProjects();
+    public interface IProjectService
+    {
+        public Task<Response<IEnumerable<Projects?>>> GetProjectsByUserIdAsync(Guid id);
+        public Task<Response<IEnumerable<Projects?>>> GetAllProjects();
+        public Task<Response<int>> CreateProject(CreateProjectDto createProjectDto);
+    }
 }

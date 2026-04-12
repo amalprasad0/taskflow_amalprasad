@@ -215,7 +215,7 @@ namespace taskFlow.Repositories
 
                 var sql = @"
                 INSERT INTO tasks 
-                    (title, description, status, assignee_id, priority, project_id, created_at, updated_at, due_date) 
+                    (title, description, status, assignee_id, priority, project_id, created_at, updated_at, due_date,created_by) 
                     VALUES 
                     (
                         @Title, 
@@ -231,7 +231,8 @@ namespace taskFlow.Repositories
                         @ProjectId, 
                         @CreatedAt, 
                         @UpdatedAt, 
-                        @DueDate
+                        @DueDate,
+                        @createdBy
                     )
                 RETURNING id;
                 ";
@@ -246,7 +247,8 @@ namespace taskFlow.Repositories
                     ProjectId = projectId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
-                    DueDate = createTaskDto.DueDate
+                    DueDate = createTaskDto.DueDate,
+                    createdBy=userId
                 };
 
                 var result = await ExecuteScalarAsync(sql, parameters);
@@ -316,6 +318,34 @@ namespace taskFlow.Repositories
             catch (Exception ex)
             {
                 return Response<Guid>.Failure("An unexpected error occurred while updating the task");
+            }
+        }
+        public async Task<Response<Guid>> DeleteTask(Guid taskId, Guid userId)
+        {
+            try
+            {
+                const string sql = @"
+                    DELETE FROM tasks
+                    WHERE id = @TaskId
+                      AND (
+                            created_by = @UserId
+                            OR project_id IN (SELECT id FROM projects WHERE owner_id = @UserId)
+                          )
+                    RETURNING id;
+                ";
+
+                var result = await ExecuteScalarAsync(sql, new { TaskId = taskId, UserId = userId });
+
+                if (result is null || result == DBNull.Value)
+                    return Response<Guid>.Failure("Task not found or you do not have permission to delete it");
+
+                var deletedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
+                return Response<Guid>.Success(deletedId, "Task deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting task: {ex.Message}");
+                return Response<Guid>.Failure("An unexpected error occurred while deleting the task");
             }
         }
     }

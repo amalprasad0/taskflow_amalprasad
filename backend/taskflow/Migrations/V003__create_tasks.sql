@@ -11,7 +11,8 @@ CREATE TABLE tasks (
     assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
     due_date    DATE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_tasks_project_id  ON tasks(project_id);

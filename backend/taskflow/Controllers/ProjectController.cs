@@ -151,5 +151,21 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
+        [HttpDelete("/task/{taskId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteTask(Guid taskId)
+        {
+            if (taskId == Guid.Empty)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid task ID", Data = null });
+
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized(new Response<object> { Status = false, Message = "Authentication required", Data = null });
+
+            var response = await _projectService.DeleteTask(taskId, userId);
+            if (!response.Status)
+                return BadRequest(response);
+            return Ok(response);
+        }
     }
 }

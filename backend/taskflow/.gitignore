@@ -51,8 +51,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-./backend/.env
-
+./.env
+*.env
 # =========================
 # ASP.NET Core
 # =========================

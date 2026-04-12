@@ -50,7 +50,7 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<int>> CreateProject(CreateProjectDto createProjectDto)
+        public async Task<Response<int>> CreateProject(CreateProjectDto createProjectDto, Guid userId)
         {
             try
             {
@@ -65,7 +65,7 @@ namespace taskFlow.Repositories
                     Name = createProjectDto.ProjectName,
                     Description = createProjectDto.ProjectDescription,
                     CreatedAt = DateTime.UtcNow,
-                    OwnerId = Guid.Parse(createProjectDto.CreatedBy)
+                    OwnerId = userId
                 };
 
                 var rowsAffected = await CreateAsync(sql, parameters);

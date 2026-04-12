@@ -9,5 +9,6 @@ namespace taskFlow.Interfaces
         public Task<Response<IEnumerable<Projects?>>> GetAllProjects();
         public Task<Response<int>> CreateProject(CreateProjectDto createProjectDto, Guid userId);
         public Task<Response<ProjectsWithTasks>> GetProjectWithTasks(Guid projectId);
+         public Task<Response<Boolean>> DeleteProject(DeleteProjectDto deleteProjectDto);
     }
 }

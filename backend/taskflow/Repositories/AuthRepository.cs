@@ -4,7 +4,7 @@ using taskFlow.Services;
 
 namespace taskFlow.Repositories
 {
-    public class AuthRepository : DapperRepository<User>
+    public class AuthRepository : BaseSqlHandler<User>
     {
         public AuthRepository(string connectionString) : base(connectionString)
         {
@@ -33,7 +33,7 @@ namespace taskFlow.Repositories
 
             try
             {
-                var rowsAffected = await CreateAsync(sql, parameters);
+                var rowsAffected = await ExecuteAsync(sql, parameters);
                 if (rowsAffected > 0)
                     return Response<bool>.Success(true, "User registered successfully");
                 return Response<bool>.Failure("Failed to register user");
@@ -48,7 +48,8 @@ namespace taskFlow.Repositories
         public async Task<User?> GetUserByEmail(string email)
         {
             var sql = "SELECT * FROM users WHERE email = @Email";
-            return await QueryAsync(sql, new { Email = email }).ContinueWith(t => t.Result.FirstOrDefault());
+            var users = await QueryAsync(sql, new { Email = email });
+            return users.FirstOrDefault();
         }
 
         public async Task<Response<string?>> Login(LoginUserDto loginDto)

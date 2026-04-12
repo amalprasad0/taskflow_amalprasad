@@ -77,5 +77,28 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
+        [HttpDelete("project/{projectId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteProject(Guid projectId)
+        {
+            if (projectId == Guid.Empty)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid project ID", Data = null });
+
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized(new Response<object> { Status = false, Message = "Authentication required", Data = null });
+
+            var deleteProjectDto = new DeleteProjectDto
+            {
+                ProjectId = projectId,
+                UserId = userId
+            };
+
+            var response = await _projectService.DeleteProject(deleteProjectDto);
+            if (!response.Status)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
     }
 }

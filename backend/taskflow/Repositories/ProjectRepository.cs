@@ -167,5 +167,97 @@ namespace taskFlow.Repositories
                 return Response<Boolean>.Failure($"Error deleting project: {ex.Message}");
             }
         }
+
+        public async Task<Response<IEnumerable<Tasks>>> GetTasksByProjectIdAsync(Guid projectId, Guid? assigneeId, string? status)
+        {
+            try
+            {
+                var sql = @"
+                    SELECT id, title as name, description, status, assignee_id as AssigneeId,priority,project_id as ProjectId,created_at as CreatedAt,updated_at as UpdatedAt,due_date as DueDate
+                    FROM tasks
+                    WHERE project_id = @ProjectId
+                      AND (CAST(@AssigneeId AS uuid) IS NULL OR assignee_id = CAST(@AssigneeId AS uuid))
+                      AND (CAST(@Status AS task_status) IS NULL OR status = CAST(@Status AS task_status))
+                ";
+
+                var parameters = new
+                {
+                    ProjectId = projectId,
+                    AssigneeId = assigneeId,
+                    Status = string.IsNullOrWhiteSpace(status) ? null : status
+                };
+
+                var tasks = await QueryAsync<Tasks>(sql, parameters);
+                return Response<IEnumerable<Tasks>>.Success(tasks, "Tasks retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching project tasks: {ex.Message}");
+                return Response<IEnumerable<Tasks>>.Failure($"Error fetching project tasks: {ex.Message}");
+            }
+        }
+        public async Task<Response<Guid>> CreateTask(CreateTaskDto createTaskDto, Guid projectId, Guid userId)
+        {
+            try
+            {
+                // Validate AssigneeId if provided
+                if (createTaskDto.AssigneeId.HasValue)
+                {
+                    var userExistsSql = "SELECT 1 FROM users WHERE id = @UserId";
+                    var userExists = await QuerySingleAsync<int?>(userExistsSql, new { UserId = createTaskDto.AssigneeId });
+                    if (userExists == null)
+                        return Response<Guid>.Failure("Invalid assignee ID: User does not exist");
+                }
+
+                // Validate DueDate if provided
+                if (createTaskDto.DueDate.HasValue && createTaskDto.DueDate.Value <= DateTime.UtcNow)
+                {
+                    return Response<Guid>.Failure("Due date must be in the future");
+                }
+
+                var sql = @"
+                INSERT INTO tasks 
+                    (title, description, status, assignee_id, priority, project_id, created_at, updated_at, due_date) 
+                    VALUES 
+                    (
+                        @Title, 
+                        @Description,
+                        CAST(@Status AS task_status),
+                        @AssigneeId,
+                        CAST(@Priority AS task_priority),
+                        @ProjectId, 
+                        @CreatedAt, 
+                        @UpdatedAt, 
+                        @DueDate
+                    )
+                RETURNING id;
+                ";
+
+                var parameters = new
+                {
+                    Title = createTaskDto.Title,
+                    Description = createTaskDto.Description,
+                    Status = createTaskDto.Status,
+                    AssigneeId = createTaskDto.AssigneeId,
+                    Priority = createTaskDto.Priority,
+                    ProjectId = projectId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    DueDate = createTaskDto.DueDate
+                };
+
+                var result = await ExecuteScalarAsync(sql, parameters);
+                if (result == null || result == DBNull.Value)
+                    return Response<Guid>.Failure("Failed to create task");
+
+                var taskId = result is Guid guid ? guid : Guid.Parse(result.ToString() ?? string.Empty);
+                return Response<Guid>.Success(taskId, $"Task Id : {taskId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating task: {ex.Message}");
+                return Response<Guid>.Failure($"Error creating task: {ex.Message}");
+            }
+        }
     }
 }

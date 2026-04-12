@@ -114,6 +114,126 @@ namespace taskFlow.Repositories
             return results;
         }
 
+        public async Task<List<TModel>> QueryAsync<TModel>(string sql, object? parameters = null) where TModel : new()
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new NpgsqlCommand(sql, connection);
+
+            if (parameters != null)
+            {
+                AddParameters(command, parameters);
+            }
+
+            using var reader = await command.ExecuteReaderAsync();
+            var results = new List<TModel>();
+            var properties = typeof(TModel).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            while (await reader.ReadAsync())
+            {
+                var item = new TModel();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var columnName = reader.GetName(i);
+                    var prop = properties.FirstOrDefault(p => string.Equals(p.Name, columnName, StringComparison.OrdinalIgnoreCase));
+                    if (prop != null && prop.CanWrite)
+                    {
+                        var value = reader.GetValue(i);
+                        if (value == DBNull.Value)
+                        {
+                            value = null;
+                        }
+                        try
+                        {
+                            if (prop.PropertyType == typeof(Guid) && value is string str)
+                            {
+                                value = Guid.Parse(str);
+                            }
+                            else if (prop.PropertyType == typeof(DateTime) && value is string dtStr)
+                            {
+                                value = DateTime.Parse(dtStr);
+                            }
+                            else
+                            {
+                                value = Convert.ChangeType(value, Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType);
+                            }
+                        }
+                        catch
+                        {
+                            value = null;
+                        }
+                        prop.SetValue(item, value);
+                    }
+                }
+                results.Add(item);
+            }
+
+            return results;
+        }
+
+        public async Task<List<TModel>> QueryAsync<TModel>(string sql, Dictionary<string, object> parameters) where TModel : new()
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new NpgsqlCommand(sql, connection);
+
+            foreach (var param in parameters)
+            {
+                command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+            }
+
+            using var reader = await command.ExecuteReaderAsync();
+            var results = new List<TModel>();
+            var properties = typeof(TModel).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            while (await reader.ReadAsync())
+            {
+                var item = new TModel();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var columnName = reader.GetName(i);
+                    var prop = properties.FirstOrDefault(p => string.Equals(p.Name, columnName, StringComparison.OrdinalIgnoreCase));
+                    if (prop != null && prop.CanWrite)
+                    {
+                        var value = reader.GetValue(i);
+                        if (value == DBNull.Value)
+                        {
+                            value = null;
+                        }
+                        try
+                        {
+                            if (prop.PropertyType == typeof(Guid) && value is string str)
+                            {
+                                value = Guid.Parse(str);
+                            }
+                            else if (prop.PropertyType == typeof(DateTime) && value is string dtStr)
+                            {
+                                value = DateTime.Parse(dtStr);
+                            }
+                            else
+                            {
+                                value = Convert.ChangeType(value, Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType);
+                            }
+                        }
+                        catch
+                        {
+                            value = null;
+                        }
+                        prop.SetValue(item, value);
+                    }
+                }
+                results.Add(item);
+            }
+
+            return results;
+        }
+
+        public async Task<TModel?> QuerySingleAsync<TModel>(string sql, object? parameters = null) where TModel : new()
+        {
+            var results = await QueryAsync<TModel>(sql, parameters);
+            return results.FirstOrDefault();
+        }
+
         public async Task<T?> QuerySingleAsync(string sql, object? parameters = null)
         {
             var results = await QueryAsync(sql, parameters);

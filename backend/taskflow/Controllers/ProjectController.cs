@@ -17,7 +17,7 @@ namespace taskFlow.Controllers
             _projectService = projectService;
         }
 
-        [HttpGet("projects")]
+        [HttpGet("/projects")]
         [Authorize] // Requires JWT token
         public async Task<IActionResult> GetProjectsByUserId()
         {
@@ -43,7 +43,7 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
-        [HttpPost("projects")]
+        [HttpPost("/projects")]
         [Authorize]
         public async Task<IActionResult> CreateProject([FromBody] CreateProjectDto project)
         {
@@ -61,7 +61,7 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
-        [HttpGet("project/{projectId}")]
+        [HttpGet("/project/{projectId}")]
         [Authorize]
         public async Task<IActionResult> GetProjectWithTasks(Guid projectId)
         {
@@ -77,7 +77,25 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
-        [HttpDelete("project/{projectId}")]
+
+        [HttpGet("/projects/{projectId}/tasks")]
+        [Authorize]
+        public async Task<IActionResult> GetTasksByProjectId(Guid projectId, [FromQuery] Guid? assignee, [FromQuery] string? status)
+        {
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized(new Response<object> { Status = false, Message = "Authentication required", Data = null });
+            if (projectId == Guid.Empty)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid project ID", Data = null });
+
+            var response = await _projectService.GetTasksByProjectIdAsync(projectId, assignee, status);
+            if (!response.Status)
+                return BadRequest(response);
+
+            return Ok(response);
+        }
+
+        [HttpDelete("/project/{projectId}")]
         [Authorize]
         public async Task<IActionResult> DeleteProject(Guid projectId)
         {
@@ -100,5 +118,25 @@ namespace taskFlow.Controllers
 
             return Ok(response);
         }
+        [HttpPost("/project/{projectId}/tasks")]
+        [Authorize]
+        public async Task<IActionResult> CreateTask(Guid projectId, [FromBody] CreateTaskDto createTaskDto)
+        {
+            if (projectId == Guid.Empty)
+                return BadRequest(new Response<object> { Status = false, Message = "Invalid project ID", Data = null });
+
+            if (createTaskDto == null || string.IsNullOrWhiteSpace(createTaskDto.Title))
+                return BadRequest(new Response<object> { Status = false, Message = "Task title is required", Data = null });
+
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized(new Response<object> { Status = false, Message = "Authentication required", Data = null });
+
+            var response = await _projectService.CreateTask(createTaskDto, projectId, userId);
+            if (!response.Status)
+                return BadRequest(response);
+
+            return Ok(response);
+    }
     }
 }

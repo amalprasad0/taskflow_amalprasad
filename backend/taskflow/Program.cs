@@ -1,11 +1,19 @@
 using EvolveDb;
 using Npgsql;
+using taskFlow.Repositories;
+
 DotNetEnv.Env.Load();
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
+                       $"Port={Environment.GetEnvironmentVariable("DB_PORT")};" +
+                       $"Database={Environment.GetEnvironmentVariable("DB_NAME")};" +
+                       $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
+                       $"Password={Environment.GetEnvironmentVariable("DB_PASS")}";
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddScoped(_ => new AuthRepository(connectionString));
 
 var app = builder.Build();
 EnsureDatabaseExists();

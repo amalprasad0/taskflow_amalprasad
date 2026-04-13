@@ -55,7 +55,7 @@ namespace taskFlow.Controllers
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 
-            return Ok(response);
+            return StatusCode(201, response);
         }
 
         [HttpGet("/project/{projectId}")]
@@ -135,7 +135,7 @@ namespace taskFlow.Controllers
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 
-            return Ok(response);
+            return StatusCode(201, response);
         }
 
         [HttpPatch("/task/{taskId}")]
@@ -145,7 +145,11 @@ namespace taskFlow.Controllers
             if (updateTaskDto == null)
                 throw new ValidationException("Invalid task data");
 
-            var response = await _projectService.UpdateTask(updateTaskDto, taskId);
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                throw new UnauthorizedAccessException("Authentication required");
+
+            var response = await _projectService.UpdateTask(updateTaskDto, taskId, userId);
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 
@@ -176,7 +180,11 @@ namespace taskFlow.Controllers
             if (projectId == Guid.Empty)
                 throw new ValidationException("Invalid project ID");
 
-            var response = await _projectService.GetProjectStats(projectId);
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                throw new UnauthorizedAccessException("Authentication required");
+
+            var response = await _projectService.GetProjectStats(projectId, userId);
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 

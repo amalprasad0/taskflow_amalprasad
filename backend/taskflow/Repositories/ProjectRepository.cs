@@ -317,7 +317,7 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<UpdateTaskResultDto>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
+        public async Task<Response<UpdateTaskResultDto>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId, Guid userId)
         {
             try
             {
@@ -331,6 +331,25 @@ namespace taskFlow.Repositories
 
                 if (updateTaskDto.DueDate.HasValue && updateTaskDto.DueDate.Value <= DateTime.UtcNow)
                     throw new ValidationException("Due date must be in the future");
+
+                const string checkSql = @"
+                    SELECT
+                        EXISTS (SELECT 1 FROM tasks WHERE id = @TaskId) AS ""Exists"",
+                        EXISTS (
+                            SELECT 1 FROM tasks 
+                            WHERE id = @TaskId 
+                              AND (
+                                  created_by = @UserId
+                                  OR project_id IN (SELECT id FROM projects WHERE owner_id = @UserId)
+                              )
+                        ) AS ""IsAuthorized"";
+                ";
+                var checkResult = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { TaskId = taskId, UserId = userId });
+
+                if (checkResult != null && !checkResult.Exists)
+                    throw new KeyNotFoundException("Task not found");
+                if (checkResult != null && !checkResult.IsAuthorized)
+                    throw new ForbiddenException("You do not have permission to update this task");
 
                 const string sql = @"
                     UPDATE tasks
@@ -360,13 +379,21 @@ namespace taskFlow.Repositories
                 var result = await ExecuteScalarAsync(sql, parameters);
 
                 if (result is null || result == DBNull.Value)
-                    throw new KeyNotFoundException("Task not found or you do not have permission to update it");
+                    throw new InvalidOperationException("Failed to update task after passing checks");
 
                 var updatedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
                 var responseData = new UpdateTaskResultDto { TaskId = updatedId };
                 return Response<UpdateTaskResultDto>.Success(responseData, "Task updated successfully");
             }
             catch (ValidationException)
+            {
+                throw;
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (ForbiddenException)
             {
                 throw;
             }
@@ -385,6 +412,25 @@ namespace taskFlow.Repositories
         {
             try
             {
+                const string checkSql = @"
+                    SELECT
+                        EXISTS (SELECT 1 FROM tasks WHERE id = @TaskId) AS ""Exists"",
+                        EXISTS (
+                            SELECT 1 FROM tasks 
+                            WHERE id = @TaskId 
+                              AND (
+                                  created_by = @UserId
+                                  OR project_id IN (SELECT id FROM projects WHERE owner_id = @UserId)
+                              )
+                        ) AS ""IsAuthorized"";
+                ";
+                var checkResult = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { TaskId = taskId, UserId = userId });
+
+                if (checkResult != null && !checkResult.Exists)
+                    throw new KeyNotFoundException("Task not found");
+                if (checkResult != null && !checkResult.IsAuthorized)
+                    throw new ForbiddenException("You do not have permission to delete this task");
+
                 const string sql = @"
                     DELETE FROM tasks
                     WHERE id = @TaskId
@@ -398,12 +444,20 @@ namespace taskFlow.Repositories
                 var result = await ExecuteScalarAsync(sql, new { TaskId = taskId, UserId = userId });
 
                 if (result is null || result == DBNull.Value)
-                    throw new KeyNotFoundException("Task not found or you do not have permission to delete it");
+                    throw new InvalidOperationException("Failed to delete task after passing checks");
 
                 var deletedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
                 return Response<Guid>.Success(deletedId, "Task deleted successfully");
             }
+            catch (ValidationException)
+            {
+                throw;
+            }
             catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (ForbiddenException)
             {
                 throw;
             }
@@ -413,10 +467,22 @@ namespace taskFlow.Repositories
                 throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
             }
         }
-      public async Task<Response<StatsDto>> GetProjectStats(Guid projectId)
+      public async Task<Response<StatsDto>> GetProjectStats(Guid projectId, Guid userId)
         {
             try
             {
+                const string checkSql = @"
+                    SELECT
+                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId)                        AS ""Exists"",
+                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId AND owner_id = @UserId) AS ""IsAuthorized"";
+                ";
+                var checkResult = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { ProjectId = projectId, UserId = userId });
+
+                if (checkResult != null && !checkResult.Exists)
+                    throw new KeyNotFoundException("Project not found");
+                if (checkResult != null && !checkResult.IsAuthorized)
+                    throw new ForbiddenException("You do not have permission to view stats for this project");
+
                 var sql = @"
                 SELECT 
                     (
@@ -460,6 +526,14 @@ namespace taskFlow.Repositories
                     throw new KeyNotFoundException("Project not found or no tasks available for statistics");
 
                 return Response<StatsDto>.Success(statsResult, "Project statistics retrieved successfully");
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (ForbiddenException)
+            {
+                throw;
             }
             catch (Exception ex)
             {

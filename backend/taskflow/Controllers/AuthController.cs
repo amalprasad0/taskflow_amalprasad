@@ -26,7 +26,7 @@ namespace taskFlow.Controllers
             if (!result.Status)
                 throw new InvalidOperationException(result.Message);
 
-            return Ok(result);
+            return StatusCode(201, result);
         }
 
         [HttpPost("Login")]

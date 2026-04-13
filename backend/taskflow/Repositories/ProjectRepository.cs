@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Serilog;
 using taskFlow.Exceptions;
 using taskFlow.Interfaces;
 using taskFlow.Models;
@@ -37,7 +38,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching projects by user ID: {ex.Message}");
+                Log.Error(ex, "Error fetching projects for UserId={UserId}", id);
                 throw new InvalidOperationException("Error fetching projects", ex);
             }
         }
@@ -51,7 +52,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching all projects: {ex.Message}");
+                Log.Error(ex, "Error fetching all projects");
                 throw new InvalidOperationException("Error fetching all projects", ex);
             }
         }
@@ -85,7 +86,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error creating project: {ex.Message}");
+                Log.Error(ex, "Error creating project");
                 throw new InvalidOperationException("Error creating project", ex);
             }
         }
@@ -178,7 +179,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching project with tasks: {ex.Message}");
+                Log.Error(ex, "Error fetching project with tasks for ProjectId={ProjectId}", projectId);
                 throw new InvalidOperationException("Error fetching project with tasks", ex);
             }
         }
@@ -239,7 +240,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching project tasks: {ex.Message}");
+                Log.Error(ex, "Error fetching tasks for ProjectId={ProjectId}", projectId);
                 throw new InvalidOperationException("Error fetching project tasks", ex);
             }
         }
@@ -313,7 +314,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error creating task: {ex.Message}");
+                Log.Error(ex, "Error creating task for ProjectId={ProjectId}, UserId={UserId}", projectId, userId);
                 throw new InvalidOperationException("Error creating task", ex);
             }
         }
@@ -401,7 +402,7 @@ namespace taskFlow.Repositories
             
             catch (Exception ex)
             {
-                Console.WriteLine($"Error updating task: {ex.Message}");
+                Log.Error(ex, "Error updating TaskId={TaskId}, UserId={UserId}", taskId, userId);
                 throw new InvalidOperationException("An unexpected error occurred while updating the task", ex);
             }
         }
@@ -461,7 +462,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error deleting task: {ex.Message}");
+                Log.Error(ex, "Error deleting TaskId={TaskId}, UserId={UserId}", taskId, userId);
                 throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
             }
         }
@@ -542,7 +543,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching project statistics: {ex.Message}");
+                Log.Error(ex, "Error fetching stats for ProjectId={ProjectId}, UserId={UserId}", projectId, userId);
                 throw new InvalidOperationException("Error fetching project statistics", ex);
             }
         }
@@ -585,7 +586,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error deleting task: {ex.Message}");
+                Log.Error(ex, "Error deleting ProjectId={ProjectId}, UserId={UserId}", projectId, userId);
                 throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
             }
         }
@@ -601,7 +602,7 @@ namespace taskFlow.Repositories
 
                 var check = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { ProjectId = projectId, UserId = userId });
 
-                Console.WriteLine($"[UpdateProject] ProjectId={projectId}, UserId={userId} → Exists={check?.Exists}, IsAuthorized={check?.IsAuthorized}");
+                Log.Debug("[UpdateProject] ProjectId={ProjectId}, UserId={UserId} → Exists={Exists}, IsAuthorized={IsAuthorized}", projectId, userId, check?.Exists, check?.IsAuthorized);
 
                 if (check is null || !check.Exists)
                     throw new KeyNotFoundException("Project not found");

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 
 namespace taskFlow.Middleware
 {
@@ -66,7 +67,7 @@ namespace taskFlow.Middleware
             catch (Exception ex)
             {
                 // Token validation failed - don't attach user
-                Console.WriteLine($"JWT validation failed: {ex.Message}");
+                Log.Warning("JWT validation failed: {ErrorMessage}", ex.Message);
             }
         }
     }

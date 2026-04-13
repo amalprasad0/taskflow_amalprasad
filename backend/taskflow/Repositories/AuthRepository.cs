@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Serilog;
 using taskFlow.DTOs;
 using taskFlow.Models;
 using taskFlow.Services;
@@ -50,7 +51,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error registering user: {ex.Message}");
+                Log.Error(ex, "Error registering user Email={Email}", userDto.Email);
                 throw new InvalidOperationException("Error registering user", ex);
             }
         }
@@ -83,7 +84,7 @@ namespace taskFlow.Repositories
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error during login: {ex.Message}");
+                Log.Error(ex, "Error during login for Email={Email}", loginDto.Email);
                 throw new InvalidOperationException("Error during login", ex);
             }
         }

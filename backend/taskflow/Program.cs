@@ -8,14 +8,27 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Json;
 using Dapper;
 
 DotNetEnv.Env.TraversePath().Load();
 
+var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+var isDevelopment = environment.Equals("Development", StringComparison.OrdinalIgnoreCase);
+
 Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Is(isDevelopment ? LogEventLevel.Debug : LogEventLevel.Information)
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .WriteTo.Console(new JsonFormatter())
+    .Enrich.WithProperty("Application", "taskFlow")
+    .Enrich.WithProperty("Environment", environment)
+    .Enrich.WithProperty("MachineName", Environment.MachineName)
+    .WriteTo.Console(isDevelopment
+        ? (Serilog.Formatting.ITextFormatter) new Serilog.Formatting.Display.MessageTemplateTextFormatter("[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}")
+        : new JsonFormatter())
     .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
@@ -84,7 +97,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCustomExceptionHandler();
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(opts =>
+{
+    opts.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.000}ms";
+    opts.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value ?? "");
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
+        var userId = httpContext.Items["UserId"];
+        if (userId != null)
+            diagnosticContext.Set("UserId", userId);
+    };
+});
 app.UseHttpsRedirection();
 
 app.UseJwtMiddleware();
@@ -111,32 +135,29 @@ void EnsureDatabaseExists()
 {
     var dbName = Environment.GetEnvironmentVariable("DB_NAME");
 
-    // Connect to the default 'postgres' database to check/create
-    var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
+    var sysConnectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
                            $"Port={Environment.GetEnvironmentVariable("DB_PORT")};" +
-                           $"Database=postgres;" +  // ← always exists
+                           $"Database=postgres;" +
                            $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
                            $"Password={Environment.GetEnvironmentVariable("DB_PASS")}";
 
-    using var connection = new NpgsqlConnection(connectionString);
+    using var connection = new NpgsqlConnection(sysConnectionString);
     connection.Open();
 
-    // Check if database exists
     using var checkCmd = new NpgsqlCommand(
         $"SELECT 1 FROM pg_database WHERE datname = '{dbName}'", connection);
-
     var exists = checkCmd.ExecuteScalar();
 
     if (exists == null)
     {
-        Console.WriteLine($"📦 Database '{dbName}' not found — creating...");
+        Log.Information("Database {DbName} not found — creating...", dbName);
         using var createCmd = new NpgsqlCommand($"CREATE DATABASE \"{dbName}\"", connection);
         createCmd.ExecuteNonQuery();
-        Console.WriteLine($"✅ Database '{dbName}' created successfully!");
+        Log.Information("Database {DbName} created successfully", dbName);
     }
     else
     {
-        Console.WriteLine($"✅ Database '{dbName}' already exists.");
+        Log.Information("Database {DbName} already exists", dbName);
     }
 }
 
@@ -144,42 +165,43 @@ void RunMigrations(IConfiguration config)
 {
     try
     {
-            var migrationPath = Path.Combine(AppContext.BaseDirectory, "Migrations");
-    Console.WriteLine($"Looking for migrations in: {migrationPath}");
- if (Directory.Exists(migrationPath))
-    {
-        var files = Directory.GetFiles(migrationPath, "*.sql");
-        Console.WriteLine($"Found {files.Length} SQL files:");
-        foreach (var f in files)
-            Console.WriteLine($"  - {Path.GetFileName(f)}");
-    }
-    else
-    {
-        Console.WriteLine("❌ Migrations folder NOT found in output!");
-    }
-        Console.WriteLine("Starting database migrations...");
-        var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
+        var migrationPath = Path.Combine(AppContext.BaseDirectory, "Migrations");
+        Log.Information("Looking for migrations in {MigrationPath}", migrationPath);
+
+        if (Directory.Exists(migrationPath))
+        {
+            var files = Directory.GetFiles(migrationPath, "*.sql");
+            Log.Information("Found {FileCount} SQL migration files", files.Length);
+            foreach (var f in files)
+                Log.Debug("Migration file: {FileName}", Path.GetFileName(f));
+        }
+        else
+        {
+            Log.Warning("Migrations folder NOT found at {MigrationPath}", migrationPath);
+        }
+
+        Log.Information("Starting database migrations");
+
+        var migrConnectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
                       $"Port={Environment.GetEnvironmentVariable("DB_PORT")};" +
                       $"Database={Environment.GetEnvironmentVariable("DB_NAME")};" +
                       $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
                       $"Password={Environment.GetEnvironmentVariable("DB_PASS")}";
-        // var connectionString = config.GetConnectionString("DefaultConnection");
 
-        using var connection = new NpgsqlConnection(connectionString);
+        using var connection = new NpgsqlConnection(migrConnectionString);
 
-        var evolve = new Evolve(connection, msg => Console.WriteLine(msg))
+        var evolve = new Evolve(connection, msg => Log.Debug("Evolve: {Message}", msg))
         {
             Locations = new[] { "Migrations" },
             IsEraseDisabled = true,
         };
 
         evolve.Migrate();
-        Console.WriteLine("Database migrations completed successfully!");
+        Log.Information("Database migrations completed successfully");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Migration failed: {ex.Message}");
-        Environment.Exit(1); // Exit with error code
+        Log.Error(ex, "Database migration failed");
+        Environment.Exit(1);
     }
-
 }

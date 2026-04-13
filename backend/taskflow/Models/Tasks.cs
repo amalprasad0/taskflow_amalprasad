@@ -10,4 +10,6 @@ public class Tasks
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public DateTime? DueDate { get; set; }
+    public string? AssigneeName { get; set; }
+    public string? OwnerName { get; set; }
 }

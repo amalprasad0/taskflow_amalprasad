@@ -103,10 +103,19 @@ namespace taskFlow.Repositories
                         t.id AS TaskId,
                         t.title AS TaskName,
                         t.description AS TaskDescription,
-                        t.status AS TaskStatus,
-                        t.assignee_id AS TaskAssigneeId
+                        CAST(t.status AS text) AS TaskStatus,
+                        t.assignee_id AS TaskAssigneeId,
+                        CAST(t.priority AS text) AS TaskPriority,
+                        t.due_date AS TaskDueDate,
+                        t.created_at AS TaskCreatedAt,
+                        t.updated_at AS TaskUpdatedAt,
+                        t.project_id AS TaskProjectId,
+                        u.name AS AssigneeName,
+                        u2.name AS OwnerName
                     FROM projects p
                     LEFT JOIN tasks t ON t.project_id = p.id
+                    LEFT JOIN users u ON t.assignee_id = u.id
+                    LEFT JOIN users u2 ON p.owner_id = u2.id
                     WHERE p.id = @ProjectId
                 ";
 
@@ -131,6 +140,7 @@ namespace taskFlow.Repositories
                             Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
                             CreatedAt = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
                             OwnerId = reader.GetGuid(reader.GetOrdinal("OwnerId")),
+                            OwnerName = reader.IsDBNull(reader.GetOrdinal("OwnerName")) ? null : reader.GetString(reader.GetOrdinal("OwnerName")),
                             Tasks = new List<Tasks>()
                         };
                         projectDictionary.Add(id, projectWithTasks);
@@ -144,7 +154,13 @@ namespace taskFlow.Repositories
                             Name = reader.GetString(reader.GetOrdinal("TaskName")),
                             Description = reader.IsDBNull(reader.GetOrdinal("TaskDescription")) ? null : reader.GetString(reader.GetOrdinal("TaskDescription")),
                             Status = reader.GetString(reader.GetOrdinal("TaskStatus")),
-                            AssigneeId = reader.IsDBNull(reader.GetOrdinal("TaskAssigneeId")) ? null : reader.GetGuid(reader.GetOrdinal("TaskAssigneeId"))
+                            AssigneeId = reader.IsDBNull(reader.GetOrdinal("TaskAssigneeId")) ? null : reader.GetGuid(reader.GetOrdinal("TaskAssigneeId")),
+                            Priority = reader.IsDBNull(reader.GetOrdinal("TaskPriority")) ? null : reader.GetString(reader.GetOrdinal("TaskPriority")),
+                            DueDate = reader.IsDBNull(reader.GetOrdinal("TaskDueDate")) ? null : reader.GetDateTime(reader.GetOrdinal("TaskDueDate")),
+                            CreatedAt = reader.GetDateTime(reader.GetOrdinal("TaskCreatedAt")),
+                            UpdatedAt = reader.IsDBNull(reader.GetOrdinal("TaskUpdatedAt")) ? null : reader.GetDateTime(reader.GetOrdinal("TaskUpdatedAt")),
+                            ProjectId = reader.GetGuid(reader.GetOrdinal("TaskProjectId")),
+                            AssigneeName = reader.IsDBNull(reader.GetOrdinal("AssigneeName")) ? null : reader.GetString(reader.GetOrdinal("AssigneeName")),
                         });
                     }
                 }
@@ -192,12 +208,18 @@ namespace taskFlow.Repositories
         {
             try
             {
+                var projectExistsCheck = await ExecuteScalarAsync("SELECT EXISTS(SELECT 1 FROM projects WHERE id = @ProjectId)", new { ProjectId = projectId });
+                if (projectExistsCheck is bool exists && !exists)
+                    throw new KeyNotFoundException("Project not found");
+
                 var sql = @"
-                    SELECT id, title as name, description, status, assignee_id as AssigneeId,priority,project_id as ProjectId,created_at as CreatedAt,updated_at as UpdatedAt,due_date as DueDate
-                    FROM tasks
-                    WHERE project_id = @ProjectId
-                      AND (CAST(@AssigneeId AS uuid) IS NULL OR assignee_id = CAST(@AssigneeId AS uuid))
-                      AND (CAST(@Status AS task_status) IS NULL OR status = CAST(@Status AS task_status))
+                    SELECT t.id, t.title as Name, t.description, CAST(t.status AS text) as status, t.assignee_id as AssigneeId,CAST(t.priority AS text) as priority,t.project_id as ProjectId,t.created_at as CreatedAt,t.updated_at as UpdatedAt,t.due_date as DueDate,u.name as AssigneeName,t.created_by as OwnerId,u2.name as OwnerName
+                    FROM tasks t
+                    LEFT JOIN users u ON t.assignee_id = u.id
+                    LEFT JOIN users u2 ON t.created_by = u2.id
+                    WHERE t.project_id = @ProjectId
+                      AND (CAST(@AssigneeId AS uuid) IS NULL OR t.assignee_id = CAST(@AssigneeId AS uuid))
+                      AND (CAST(@Status AS task_status) IS NULL OR t.status = CAST(@Status AS task_status))
                 ";
 
                 var parameters = new
@@ -210,6 +232,10 @@ namespace taskFlow.Repositories
                 var tasks = await QueryAsync<Tasks>(sql, parameters);
                 return Response<IEnumerable<Tasks>>.Success(tasks, "Tasks retrieved successfully");
             }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching project tasks: {ex.Message}");
@@ -217,7 +243,7 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<Guid>> CreateTask(CreateTaskDto createTaskDto, Guid projectId, Guid userId)
+        public async Task<Response<CreateTaskResultDto>> CreateTask(CreateTaskDto createTaskDto, Guid projectId, Guid userId)
         {
             try
             {
@@ -277,7 +303,8 @@ namespace taskFlow.Repositories
                     throw new InvalidOperationException("Failed to create task");
 
                 var taskId = result is Guid guid ? guid : Guid.Parse(result.ToString() ?? string.Empty);
-                return Response<Guid>.Success(taskId, $"Task Id : {taskId}");
+                var responseData = new CreateTaskResultDto { TaskId = taskId };
+                return Response<CreateTaskResultDto>.Success(responseData, "Task created successfully");
             }
             catch (ValidationException)
             {
@@ -290,7 +317,7 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<Guid>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
+        public async Task<Response<UpdateTaskResultDto>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
         {
             try
             {
@@ -336,7 +363,8 @@ namespace taskFlow.Repositories
                     throw new KeyNotFoundException("Task not found or you do not have permission to update it");
 
                 var updatedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
-                return Response<Guid>.Success(updatedId, "Task updated successfully");
+                var responseData = new UpdateTaskResultDto { TaskId = updatedId };
+                return Response<UpdateTaskResultDto>.Success(responseData, "Task updated successfully");
             }
             catch (ValidationException)
             {

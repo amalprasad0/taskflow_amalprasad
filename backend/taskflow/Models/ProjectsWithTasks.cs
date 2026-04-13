@@ -5,5 +5,6 @@ public class ProjectsWithTasks
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; }
     public Guid OwnerId { get; set; }
+    public string? OwnerName { get; set; }
     public List<Tasks>? Tasks { get; set; }
 }

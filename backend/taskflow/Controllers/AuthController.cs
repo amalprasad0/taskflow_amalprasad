@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using taskFlow.DTOs;
 using taskFlow.Models;
@@ -18,12 +19,12 @@ namespace taskFlow.Controllers
         [HttpPost("Register")]
         public async Task<IActionResult> Register([FromBody] RegisterUserDto user)
         {
-            if (user == null || string.IsNullOrWhiteSpace(user.Email))
-                return BadRequest(new Response<object> { Status = false, Message = "Email and password are required", Data = null });
+            if (user == null || string.IsNullOrWhiteSpace(user.Email) || string.IsNullOrWhiteSpace(user.Password))
+                throw new ValidationException("Email and password are required");
 
             var result = await _authRepository.Register(user);
             if (!result.Status)
-                return BadRequest(result);
+                throw new InvalidOperationException(result.Message);
 
             return Ok(result);
         }
@@ -33,7 +34,7 @@ namespace taskFlow.Controllers
         {
             var response = await _authRepository.Login(loginDto);
             if (!response.Status)
-                return BadRequest(response);
+                throw new UnauthorizedAccessException(response.Message);
 
             return Ok(response);
         }

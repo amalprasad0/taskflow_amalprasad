@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using taskFlow.DTOs;
 using taskFlow.Models;
 using taskFlow.Services;
@@ -13,7 +14,7 @@ namespace taskFlow.Repositories
         public async Task<Response<bool>> Register(RegisterUserDto userDto)
         {
             if (userDto == null || string.IsNullOrWhiteSpace(userDto.Email) || string.IsNullOrWhiteSpace(userDto.Password))
-                return Response<bool>.Failure("Email and password are required");
+                throw new ValidationException("Email and password are required");
 
             var sql = @"
                 INSERT INTO users (id, name, email, password, created_at) 
@@ -36,12 +37,12 @@ namespace taskFlow.Repositories
                 var rowsAffected = await ExecuteAsync(sql, parameters);
                 if (rowsAffected > 0)
                     return Response<bool>.Success(true, "User registered successfully");
-                return Response<bool>.Failure("Failed to register user");
+                throw new InvalidOperationException("Failed to register user");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error registering user: {ex.Message}");
-                return Response<bool>.Failure($"Error registering user: {ex.Message}");
+                throw new InvalidOperationException("Error registering user", ex);
             }
         }
 
@@ -55,22 +56,25 @@ namespace taskFlow.Repositories
         public async Task<Response<string?>> Login(LoginUserDto loginDto)
         {
             if (loginDto == null || string.IsNullOrWhiteSpace(loginDto.Email) || string.IsNullOrWhiteSpace(loginDto.Password))
-                return Response<string?>.Failure("Email and password are required");
+                throw new ValidationException("Email and password are required");
 
             try
             {
                 var user = await GetUserByEmail(loginDto.Email);
                 if (user == null || string.IsNullOrWhiteSpace(user.Password) || !PasswordHasher.VerifyPassword(loginDto.Password, user.Password))
-                    return Response<string?>.Failure("Invalid credentials");
+                    throw new UnauthorizedAccessException("Invalid credentials");
 
-                // Generate JWT token
                 var token = JwtHandler.GenerateToken(user.Id.ToString(), user.Email ?? string.Empty);
                 return Response<string?>.Success(token, "Login successful");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error during login: {ex.Message}");
-                return Response<string?>.Failure($"Error during login: {ex.Message}");
+                throw new InvalidOperationException("Error during login", ex);
             }
         }
     }

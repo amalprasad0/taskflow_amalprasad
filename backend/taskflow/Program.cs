@@ -3,12 +3,23 @@ using Npgsql;
 using taskFlow.Repositories;
 using taskFlow.Interfaces;
 using taskFlow.Middleware;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Serilog;
+using Serilog.Formatting.Json;
 
 DotNetEnv.Env.Load();
+
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(new JsonFormatter())
+    .CreateLogger();
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog();
 
 var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
                        $"Port={Environment.GetEnvironmentVariable("DB_PORT")};" +
@@ -16,7 +27,29 @@ var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" 
                        $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
                        $"Password={Environment.GetEnvironmentVariable("DB_PASS")}";
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.SuppressModelStateInvalidFilter = true;
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(ms => ms.Value.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => string.Join(", ", kvp.Value.Errors.Select(e => string.IsNullOrEmpty(e.ErrorMessage) ? "The value is invalid." : e.ErrorMessage))
+                );
+
+            var problem = new
+            {
+                error = "validation failed",
+                fields = errors
+            };
+
+            return new BadRequestObjectResult(problem);
+        };
+    });
+
 builder.Services.AddOpenApi();
 
 // JWT Authentication
@@ -40,12 +73,15 @@ builder.Services.AddScoped<IProjectService>(_ => new ProjectRepository(connectio
 var app = builder.Build();
 EnsureDatabaseExists();
 RunMigrations(app.Configuration);
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
+app.UseCustomExceptionHandler();
+app.UseSerilogRequestLogging();
 app.UseHttpsRedirection();
 
 app.UseJwtMiddleware();
@@ -55,7 +91,18 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Host terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 void EnsureDatabaseExists()
 {

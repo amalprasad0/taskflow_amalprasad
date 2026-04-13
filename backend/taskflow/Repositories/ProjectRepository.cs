@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using taskFlow.Exceptions;
 using taskFlow.Interfaces;
 using taskFlow.Models;
 using taskFlow.DTOs;
@@ -35,7 +37,7 @@ namespace taskFlow.Repositories
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching projects by user ID: {ex.Message}");
-                return Response<IEnumerable<Projects?>>.Failure($"Error fetching projects: {ex.Message}");
+                throw new InvalidOperationException("Error fetching projects", ex);
             }
         }
 
@@ -49,7 +51,7 @@ namespace taskFlow.Repositories
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching all projects: {ex.Message}");
-                return Response<IEnumerable<Projects?>>.Failure($"Error fetching all projects: {ex.Message}");
+                throw new InvalidOperationException("Error fetching all projects", ex);
             }
         }
 
@@ -76,9 +78,10 @@ namespace taskFlow.Repositories
             catch (Exception ex)
             {
                 Console.WriteLine($"Error creating project: {ex.Message}");
-                return Response<int>.Failure($"Error creating project: {ex.Message}");
+                throw new InvalidOperationException("Error creating project", ex);
             }
         }
+
         public async Task<Response<ProjectsWithTasks>> GetProjectWithTasks(Guid projectId)
         {
             try
@@ -141,30 +144,40 @@ namespace taskFlow.Repositories
 
                 var projectResult = projectDictionary.Values.FirstOrDefault();
                 if (projectResult == null)
-                    return Response<ProjectsWithTasks>.Failure("Project not found");
+                    throw new KeyNotFoundException("Project not found");
 
                 return Response<ProjectsWithTasks>.Success(projectResult, "Project with tasks retrieved successfully");
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching project with tasks: {ex.Message}");
-                return Response<ProjectsWithTasks>.Failure($"Error fetching project with tasks: {ex.Message}");
+                throw new InvalidOperationException("Error fetching project with tasks", ex);
             }
         }
-        public async Task<Response<Boolean>> DeleteProject(DeleteProjectDto deleteProjectDto)
+
+        public async Task<Response<bool>> DeleteProject(DeleteProjectDto deleteProjectDto)
         {
             try
             {
                 var sql = "DELETE FROM projects WHERE id = @ProjectId AND owner_id = @UserId";
                 var rowsAffected = await ExecuteAsync(sql, new { ProjectId = deleteProjectDto.ProjectId, UserId = deleteProjectDto.UserId });
                 if (rowsAffected > 0)
-                    return Response<Boolean>.Success(true, "Project deleted successfully");
-                return Response<Boolean>.Failure("Project not found or could not be deleted");
+                    return Response<bool>.Success(true, "Project deleted successfully");
+
+                throw new KeyNotFoundException("Project not found or could not be deleted");
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error deleting project: {ex.Message}");
-                return Response<Boolean>.Failure($"Error deleting project: {ex.Message}");
+                throw new InvalidOperationException("Error deleting project", ex);
             }
         }
 
@@ -193,9 +206,10 @@ namespace taskFlow.Repositories
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching project tasks: {ex.Message}");
-                return Response<IEnumerable<Tasks>>.Failure($"Error fetching project tasks: {ex.Message}");
+                throw new InvalidOperationException("Error fetching project tasks", ex);
             }
         }
+
         public async Task<Response<Guid>> CreateTask(CreateTaskDto createTaskDto, Guid projectId, Guid userId)
         {
             try
@@ -205,12 +219,12 @@ namespace taskFlow.Repositories
                     var userExistsSql = "SELECT 1 FROM users WHERE id = @UserId";
                     var userExists = await QueryAsync<int?>(userExistsSql, new { UserId = createTaskDto.AssigneeId });
                     if (userExists.Count() == 0)
-                        return Response<Guid>.Failure("Invalid assignee ID: User does not exist");
+                        throw new ValidationException("Invalid assignee ID: User does not exist");
                 }
 
                 if (createTaskDto.DueDate.HasValue && createTaskDto.DueDate.Value <= DateTime.UtcNow)
                 {
-                    return Response<Guid>.Failure("Due date must be in the future");
+                    throw new ValidationException("Due date must be in the future");
                 }
 
                 var sql = @"
@@ -248,39 +262,41 @@ namespace taskFlow.Repositories
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                     DueDate = createTaskDto.DueDate,
-                    createdBy=userId
+                    createdBy = userId
                 };
 
                 var result = await ExecuteScalarAsync(sql, parameters);
                 if (result == null || result == DBNull.Value)
-                    return Response<Guid>.Failure("Failed to create task");
+                    throw new InvalidOperationException("Failed to create task");
 
                 var taskId = result is Guid guid ? guid : Guid.Parse(result.ToString() ?? string.Empty);
                 return Response<Guid>.Success(taskId, $"Task Id : {taskId}");
             }
+            catch (ValidationException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error creating task: {ex.Message}");
-                return Response<Guid>.Failure($"Error creating task: {ex.Message}");
+                throw new InvalidOperationException("Error creating task", ex);
             }
         }
-       public async Task<Response<Guid>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
+
+        public async Task<Response<Guid>> UpdateTask(UpdateTaskDto updateTaskDto, Guid taskId)
         {
             try
             {
-                // Validate AssigneeId if provided
                 if (updateTaskDto.AssigneeId.HasValue)
                 {
                     const string userExistsSql = "SELECT 1 FROM users WHERE id = @UserId";
-                    // QueryAsync returns a collection — check if any row came back
                     var userExists = await QueryAsync<int>(userExistsSql, new { UserId = updateTaskDto.AssigneeId.Value });
                     if (!userExists.Any())
-                        return Response<Guid>.Failure("Invalid assignee ID: User does not exist");
+                        throw new ValidationException("Invalid assignee ID: User does not exist");
                 }
 
-                // Only validate DueDate if the caller is explicitly changing it
                 if (updateTaskDto.DueDate.HasValue && updateTaskDto.DueDate.Value <= DateTime.UtcNow)
-                    return Response<Guid>.Failure("Due date must be in the future");
+                    throw new ValidationException("Due date must be in the future");
 
                 const string sql = @"
                     UPDATE tasks
@@ -298,28 +314,38 @@ namespace taskFlow.Repositories
 
                 var parameters = new
                 {
-                    TaskId      = taskId,
-                    Title       = updateTaskDto.Title,
+                    TaskId = taskId,
+                    Title = updateTaskDto.Title,
                     Description = updateTaskDto.Description,
-                    AssigneeId  = updateTaskDto.AssigneeId,
-                    Priority    = updateTaskDto.Priority,
-                    Status      = updateTaskDto.Status,
-                    DueDate     = updateTaskDto.DueDate,
+                    AssigneeId = updateTaskDto.AssigneeId,
+                    Priority = updateTaskDto.Priority,
+                    Status = updateTaskDto.Status,
+                    DueDate = updateTaskDto.DueDate,
                 };
 
                 var result = await ExecuteScalarAsync(sql, parameters);
 
                 if (result is null || result == DBNull.Value)
-                    return Response<Guid>.Failure("Task not found or you do not have permission to update it");
+                    throw new KeyNotFoundException("Task not found or you do not have permission to update it");
 
                 var updatedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
                 return Response<Guid>.Success(updatedId, "Task updated successfully");
             }
+            catch (ValidationException)
+            {
+                throw;
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                return Response<Guid>.Failure("An unexpected error occurred while updating the task");
+                Console.WriteLine($"Error updating task: {ex.Message}");
+                throw new InvalidOperationException("An unexpected error occurred while updating the task", ex);
             }
         }
+
         public async Task<Response<Guid>> DeleteTask(Guid taskId, Guid userId)
         {
             try
@@ -337,15 +363,19 @@ namespace taskFlow.Repositories
                 var result = await ExecuteScalarAsync(sql, new { TaskId = taskId, UserId = userId });
 
                 if (result is null || result == DBNull.Value)
-                    return Response<Guid>.Failure("Task not found or you do not have permission to delete it");
+                    throw new KeyNotFoundException("Task not found or you do not have permission to delete it");
 
                 var deletedId = result is Guid g ? g : Guid.Parse(result.ToString()!);
                 return Response<Guid>.Success(deletedId, "Task deleted successfully");
             }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error deleting task: {ex.Message}");
-                return Response<Guid>.Failure("An unexpected error occurred while deleting the task");
+                throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
             }
         }
     }

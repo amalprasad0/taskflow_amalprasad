@@ -55,13 +55,14 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<int>> CreateProject(CreateProjectDto createProjectDto, Guid userId)
+        public async Task<Response<CreateProjectResultDto>> CreateProject(CreateProjectDto createProjectDto, Guid userId)
         {
             try
             {
                 var sql = @"
                     INSERT INTO projects (name, description, created_at, owner_id) 
                     VALUES (@Name, @Description, @CreatedAt, @OwnerId)
+                    RETURNING id;
                 ";
 
                 var parameters = new
@@ -72,8 +73,14 @@ namespace taskFlow.Repositories
                     OwnerId = userId
                 };
 
-                var rowsAffected = await ExecuteAsync(sql, parameters);
-                return Response<int>.Success(rowsAffected, "Project created successfully");
+                var result = await ExecuteScalarAsync(sql, parameters);
+                if (result == null || result == DBNull.Value)
+                    throw new InvalidOperationException("Failed to create project");
+
+                var projectId = result is Guid guid ? guid : Guid.Parse(result.ToString() ?? string.Empty);
+                var responseData = new CreateProjectResultDto { ProjectId = projectId };
+
+                return Response<CreateProjectResultDto>.Success(responseData, "Project created successfully");
             }
             catch (Exception ex)
             {
@@ -432,7 +439,7 @@ namespace taskFlow.Repositories
                 throw new InvalidOperationException("Error fetching project statistics", ex);
             }
         }
-        public async Task<Response<Boolean>> DeleteProject(Guid projectId,Guid userId)
+        public async Task<Response<DeleteProjectResultDto>> DeleteProject(Guid projectId,Guid userId)
         {
             try
             {
@@ -457,7 +464,7 @@ namespace taskFlow.Repositories
                 var result = await QuerySingleAsync<DeleteProjectResult>(sql, new { ProjectId = projectId, UserId = userId });
 
                 if (result != null && result.IsDeleted)
-                    return Response<Boolean>.Success(true, "Project deleted successfully");
+                    return Response<DeleteProjectResultDto>.Success(new DeleteProjectResultDto { IsDeleted = true }, "Project deleted successfully");
                 if (result != null && !result.Exists)
                     throw new KeyNotFoundException("Project not found");
                 if (result != null && !result.IsAuthorized)

@@ -159,27 +159,27 @@ namespace taskFlow.Repositories
             }
         }
 
-        public async Task<Response<bool>> DeleteProject(DeleteProjectDto deleteProjectDto)
-        {
-            try
-            {
-                var sql = "DELETE FROM projects WHERE id = @ProjectId AND owner_id = @UserId";
-                var rowsAffected = await ExecuteAsync(sql, new { ProjectId = deleteProjectDto.ProjectId, UserId = deleteProjectDto.UserId });
-                if (rowsAffected > 0)
-                    return Response<bool>.Success(true, "Project deleted successfully");
+        // public async Task<Response<bool>> DeleteProject(DeleteProjectDto deleteProjectDto)
+        // {
+        //     try
+        //     {
+        //         var sql = "DELETE FROM projects WHERE id = @ProjectId AND owner_id = @UserId";
+        //         var rowsAffected = await ExecuteAsync(sql, new { ProjectId = deleteProjectDto.ProjectId, UserId = deleteProjectDto.UserId });
+        //         if (rowsAffected > 0)
+        //             return Response<bool>.Success(true, "Project deleted successfully");
 
-                throw new KeyNotFoundException("Project not found or could not be deleted");
-            }
-            catch (KeyNotFoundException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error deleting project: {ex.Message}");
-                throw new InvalidOperationException("Error deleting project", ex);
-            }
-        }
+        //         throw new KeyNotFoundException("Project not found or could not be deleted");
+        //     }
+        //     catch (KeyNotFoundException)
+        //     {
+        //         throw;
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         Console.WriteLine($"Error deleting project: {ex.Message}");
+        //         throw new InvalidOperationException("Error deleting project", ex);
+        //     }
+        // }
 
         public async Task<Response<IEnumerable<Tasks>>> GetTasksByProjectIdAsync(Guid projectId, Guid? assigneeId, string? status)
         {
@@ -376,6 +376,149 @@ namespace taskFlow.Repositories
             {
                 Console.WriteLine($"Error deleting task: {ex.Message}");
                 throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
+            }
+        }
+      public async Task<Response<StatsDto>> GetProjectStats(Guid projectId)
+        {
+            try
+            {
+                var sql = @"
+                SELECT 
+                    (
+                        SELECT jsonb_object_agg(status, count)
+                        FROM (
+                            SELECT status, COUNT(*) AS count 
+                            FROM tasks 
+                            WHERE project_id = @ProjectId         -- ✅ Fixed: was hardcoded GUID
+                            GROUP BY status
+                        ) AS status_counts
+                    ) AS TasksPerStatus,
+
+                    (
+                        SELECT jsonb_object_agg(priority, count)
+                        FROM (
+                            SELECT priority, COUNT(*) AS count 
+                            FROM tasks 
+                            WHERE project_id = @ProjectId         -- ✅ Fixed: was hardcoded GUID
+                            GROUP BY priority
+                        ) AS priority_counts
+                    ) AS TasksPerPriority,
+
+                    (
+                        SELECT jsonb_object_agg(name, count)
+                        FROM (
+                            SELECT 
+                                COALESCE(u.name, 'Unassigned') AS name,
+                                COUNT(*) AS count 
+                            FROM tasks t 
+                            LEFT JOIN users u ON t.assignee_id = u.id 
+                            WHERE t.project_id = @ProjectId       -- ✅ Fixed: was hardcoded GUID
+                            GROUP BY name
+                        ) AS assignee_counts
+                    ) AS TasksPerAssignee
+                ";
+
+                // ✅ QueryAsync<StatsDto> now works because TypeHandler handles JSONB deserialization
+                var statsResult = await QuerySingleAsync<StatsDto>(sql, new { ProjectId = projectId });
+
+                if (statsResult == null)
+                    throw new KeyNotFoundException("Project not found or no tasks available for statistics");
+
+                return Response<StatsDto>.Success(statsResult, "Project statistics retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching project statistics: {ex.Message}");
+                throw new InvalidOperationException("Error fetching project statistics", ex);
+            }
+        }
+        public async Task<Response<Boolean>> DeleteProject(Guid projectId,Guid userId)
+        {
+            try
+            {
+                
+                var sql = @"
+                WITH deleted AS (
+                    DELETE FROM projects
+                    WHERE id = @ProjectId
+                    AND owner_id = @UserId
+                    RETURNING id
+                )
+                SELECT 
+                    EXISTS (SELECT 1 FROM deleted) AS ""IsDeleted"",
+                    EXISTS (
+                        SELECT 1 FROM projects WHERE id = @ProjectId
+                    ) AS ""Exists"",
+                    EXISTS (
+                        SELECT 1 FROM projects 
+                        WHERE id = @ProjectId AND owner_id = @UserId
+                    ) AS ""IsAuthorized"";
+                ";
+                var result = await QuerySingleAsync<DeleteProjectResult>(sql, new { ProjectId = projectId, UserId = userId });
+
+                if (result != null && result.IsDeleted)
+                    return Response<Boolean>.Success(true, "Project deleted successfully");
+                if (result != null && !result.Exists)
+                    throw new KeyNotFoundException("Project not found");
+                if (result != null && !result.IsAuthorized)
+                    throw new ForbiddenException("You do not have permission to delete this project");
+               
+                throw new KeyNotFoundException("Project not found or you do not have permission to delete it");
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting task: {ex.Message}");
+                throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
+            }
+        }
+        public async Task<Response<UpdateProjectResult>> UpdateProject(UpdateProjectDataDto updateProjectDataDto, Guid projectId, Guid userId)
+        {
+            try
+            {
+                const string checkSql = @"
+                    SELECT
+                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId)                        AS Exists,
+                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId AND owner_id = @UserId) AS IsAuthorized;
+                ";
+
+                var check = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { ProjectId = projectId, UserId = userId });
+
+                Console.WriteLine($"[UpdateProject] ProjectId={projectId}, UserId={userId} → Exists={check?.Exists}, IsAuthorized={check?.IsAuthorized}");
+
+                if (check is null || !check.Exists)
+                    throw new KeyNotFoundException("Project not found");
+                if (!check.IsAuthorized)
+                    throw new ForbiddenException("You do not have permission to update this project");
+
+                const string sql = @"
+                    UPDATE projects
+                    SET name        = COALESCE(@Name, name),
+                        description = COALESCE(@Description, description)
+                    WHERE id = @ProjectId
+                      AND owner_id = @UserId
+                    RETURNING id;
+                ";
+                var result = await ExecuteScalarAsync(sql, new { Name = updateProjectDataDto.Name, Description = updateProjectDataDto.Description, ProjectId = projectId, UserId = userId });
+                if (result is null || result == DBNull.Value)
+                    throw new InvalidOperationException("Update failed unexpectedly");
+
+                return Response<UpdateProjectResult>.Success(new UpdateProjectResult { IsUpdated = true }, "Project updated successfully");
+            }
+            catch (KeyNotFoundException)
+            {
+                throw;
+            }
+            catch (ForbiddenException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("An unexpected error occurred while updating the project", ex);
             }
         }
     }

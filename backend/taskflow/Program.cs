@@ -9,8 +9,9 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Serilog;
 using Serilog.Formatting.Json;
+using Dapper;
 
-DotNetEnv.Env.Load();
+DotNetEnv.Env.TraversePath().Load();
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
@@ -26,6 +27,8 @@ var connectionString = $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" 
                        $"Database={Environment.GetEnvironmentVariable("DB_NAME")};" +
                        $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
                        $"Password={Environment.GetEnvironmentVariable("DB_PASS")}";
+Dapper.SqlMapper.AddTypeHandler(new JsonTypeHandler<Dictionary<string, int>>());
+DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(options =>

@@ -110,7 +110,7 @@ namespace taskFlow.Controllers
                 UserId = userId
             };
 
-            var response = await _projectService.DeleteProject(deleteProjectDto);
+            var response = await _projectService.DeleteProject(deleteProjectDto.ProjectId, deleteProjectDto.UserId);
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 
@@ -164,6 +164,36 @@ namespace taskFlow.Controllers
                 throw new UnauthorizedAccessException("Authentication required");
 
             var response = await _projectService.DeleteTask(taskId, userId);
+            if (!response.Status)
+                throw new InvalidOperationException(response.Message);
+
+            return Ok(response);
+        }
+        [HttpGet("/project/{projectId}/stats")]
+        [Authorize]
+        public async Task<IActionResult> GetProjectStats(Guid projectId)
+        {
+            if (projectId == Guid.Empty)
+                throw new ValidationException("Invalid project ID");
+
+            var response = await _projectService.GetProjectStats(projectId);
+            if (!response.Status)
+                throw new InvalidOperationException(response.Message);
+
+            return Ok(response);
+        }
+        [HttpPatch("/project/{projectId}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateProject(Guid projectId, [FromBody] UpdateProjectDataDto updateProjectDataDto)
+        {
+            if (updateProjectDataDto == null)
+                throw new ValidationException("Invalid project data");
+
+            var userId = HttpContext.GetUserId();
+            if (userId == Guid.Empty)
+                throw new UnauthorizedAccessException("Authentication required");
+
+            var response = await _projectService.UpdateProject(updateProjectDataDto, projectId, userId);
             if (!response.Status)
                 throw new InvalidOperationException(response.Message);
 

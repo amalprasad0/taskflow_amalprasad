@@ -5,10 +5,7 @@ using taskflow.IntegrationTests.Fixtures;
 
 namespace taskflow.IntegrationTests;
 
-/// <summary>
-/// Helper base class: provides RegisterAsync, LoginAsync, and an authenticated HttpClient.
-/// All tests in [Collection("Integration")] inherit from this.
-/// </summary>
+
 [Collection("Integration")]
 public abstract class IntegrationTestBase
 {
@@ -26,7 +23,6 @@ public abstract class IntegrationTestBase
 
     protected async Task<string> RegisterAndLoginAsync(string email, string password, string username)
     {
-        // Register
         var registerResp = await Client.PostAsJsonAsync("/auth/Register", new
         {
             email,
@@ -35,7 +31,6 @@ public abstract class IntegrationTestBase
         });
         registerResp.EnsureSuccessStatusCode();
 
-        // Login → extract JWT
         var loginResp = await Client.PostAsJsonAsync("/auth/Login", new { email, password });
         loginResp.EnsureSuccessStatusCode();
 

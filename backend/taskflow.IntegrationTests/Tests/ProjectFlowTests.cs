@@ -5,20 +5,16 @@ using taskflow.IntegrationTests.Fixtures;
 
 namespace taskflow.IntegrationTests.Tests;
 
-/// <summary>
-/// Scenario 2: create project → create task → GET /project/:id includes that task.
-/// </summary>
+
 public sealed class ProjectFlowTests(TaskFlowFactory factory) : IntegrationTestBase(factory)
 {
     [Fact]
     public async Task CreateProject_ThenTask_VerifiedInGetProject()
     {
-        // ── AUTH ───────────────────────────────────────────────────────────────
         var jwt = await RegisterAndLoginAsync(
-            UniqueEmail("proj"), "P@ssword123!", $"projuser_{Guid.NewGuid():N[..8]}");
+            UniqueEmail("proj"), "P@ssword123!", $"projuser_{Guid.NewGuid().ToString("N")[..8]}");
         AuthenticatedClient(jwt);
 
-        // ── CREATE PROJECT ─────────────────────────────────────────────────────
         var createProjResp = await Client.PostAsJsonAsync("/projects", new
         {
             projectName        = "Integration Test Project",
@@ -31,7 +27,6 @@ public sealed class ProjectFlowTests(TaskFlowFactory factory) : IntegrationTestB
         var projectId  = projData.GetProperty("projectId").GetString();
         projectId.Should().NotBeNullOrWhiteSpace();
 
-        // ── CREATE TASK ────────────────────────────────────────────────────────
         var createTaskResp = await Client.PostAsJsonAsync(
             $"/project/{projectId}/tasks", new
             {
@@ -47,7 +42,6 @@ public sealed class ProjectFlowTests(TaskFlowFactory factory) : IntegrationTestB
         var taskId   = taskData.GetProperty("taskId").GetString();
         taskId.Should().NotBeNullOrWhiteSpace();
 
-        // ── GET PROJECT WITH TASKS ─────────────────────────────────────────────
         var getResp = await Client.GetAsync($"/project/{projectId}");
 
         getResp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -66,7 +60,7 @@ public sealed class ProjectFlowTests(TaskFlowFactory factory) : IntegrationTestB
     public async Task GetProject_UnknownId_Returns404()
     {
         var jwt = await RegisterAndLoginAsync(
-            UniqueEmail("404"), "P@ssword123!", $"user404_{Guid.NewGuid():N[..8]}");
+            UniqueEmail("404"), "P@ssword123!", $"user404_{Guid.NewGuid().ToString("N")[..8]}");
         AuthenticatedClient(jwt);
 
         var resp = await Client.GetAsync($"/project/{Guid.NewGuid()}");

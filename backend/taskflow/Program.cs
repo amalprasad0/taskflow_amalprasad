@@ -12,7 +12,10 @@ using Serilog.Events;
 using Serilog.Formatting.Json;
 using Dapper;
 
-DotNetEnv.Env.TraversePath().Load();
+if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Testing")
+{
+    DotNetEnv.Env.TraversePath().Load();
+}
 
 var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 var isDevelopment = environment.Equals("Development", StringComparison.OrdinalIgnoreCase);
@@ -87,7 +90,11 @@ builder.Services.AddScoped(_ => new AuthRepository(connectionString));
 builder.Services.AddScoped<IProjectService>(_ => new ProjectRepository(connectionString));
 
 var app = builder.Build();
-EnsureDatabaseExists();
+
+// Skip DB creation in integration tests — Testcontainers provides a ready-made DB.
+if (!environment.Equals("Testing", StringComparison.OrdinalIgnoreCase))
+    EnsureDatabaseExists();
+
 RunMigrations(app.Configuration);
 
 // Configure the HTTP request pipeline.
@@ -202,7 +209,7 @@ void RunMigrations(IConfiguration config)
     catch (Exception ex)
     {
         Log.Error(ex, "Database migration failed");
-        Environment.Exit(1);
+        throw;
     }
 }
 

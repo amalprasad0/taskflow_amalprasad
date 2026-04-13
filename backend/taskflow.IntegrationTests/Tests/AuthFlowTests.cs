@@ -6,10 +6,7 @@ using taskflow.IntegrationTests.Fixtures;
 
 namespace taskflow.IntegrationTests.Tests;
 
-/// <summary>
-/// Scenario 1: register → login → get JWT back.
-/// Verifies the full auth flow returns a valid Bearer token.
-/// </summary>
+
 public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase(factory)
 {
     [Fact]
@@ -17,9 +14,8 @@ public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase
     {
         var email    = UniqueEmail("auth");
         var password = "P@ssword123!";
-        var username = $"user_{Guid.NewGuid():N[..8]}";
+        var username = $"user_{Guid.NewGuid().ToString("N")[..8]}";
 
-        // ── REGISTER ───────────────────────────────────────────────────────────
         var registerResp = await Client.PostAsJsonAsync("/auth/Register", new
         {
             email,
@@ -29,7 +25,6 @@ public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase
 
         registerResp.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        // ── LOGIN ──────────────────────────────────────────────────────────────
         var loginResp = await Client.PostAsJsonAsync("/auth/Login", new { email, password });
 
         loginResp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -39,7 +34,6 @@ public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase
 
         token.Should().NotBeNullOrWhiteSpace("login should return a valid JWT");
 
-        // The token should have 3 dot-separated parts (header.payload.signature)
         token!.Split('.').Should().HaveCount(3, "a valid JWT has exactly 3 parts");
     }
 
@@ -48,16 +42,15 @@ public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase
     {
         var email    = UniqueEmail("dup");
         var password = "P@ssword123!";
-        var username = $"user_{Guid.NewGuid():N[..8]}";
+        var username = $"user_{Guid.NewGuid().ToString("N")[..8]}";
 
         await Client.PostAsJsonAsync("/auth/Register", new { email, password, username });
 
-        // Second registration with same email
         var resp = await Client.PostAsJsonAsync("/auth/Register", new
         {
             email,
             password,
-            username = $"other_{Guid.NewGuid():N[..8]}"
+            username = $"other_{Guid.NewGuid().ToString("N")[..8]}"
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -68,7 +61,7 @@ public sealed class AuthFlowTests(TaskFlowFactory factory) : IntegrationTestBase
     {
         var email    = UniqueEmail("wrong");
         var password = "P@ssword123!";
-        var username = $"user_{Guid.NewGuid():N[..8]}";
+        var username = $"user_{Guid.NewGuid().ToString("N")[..8]}";
 
         await Client.PostAsJsonAsync("/auth/Register", new { email, password, username });
 

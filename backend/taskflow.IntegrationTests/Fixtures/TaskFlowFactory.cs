@@ -8,12 +8,9 @@ using Testcontainers.PostgreSql;
 
 namespace taskflow.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Shared Postgres container that lives for the entire test collection.
-/// </summary>
-public sealed class DatabaseFixture : IAsyncLifetime
+public sealed class TaskFlowFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    public PostgreSqlContainer Container { get; } = new PostgreSqlBuilder()
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
         .WithImage("postgres:16-alpine")
         .WithDatabase("taskflow_test")
         .WithUsername("test")
@@ -21,48 +18,31 @@ public sealed class DatabaseFixture : IAsyncLifetime
         .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5432))
         .Build();
 
-    public string ConnectionString => Container.GetConnectionString();
-
-    public Task InitializeAsync() => Container.StartAsync();
-
-    public Task DisposeAsync() => Container.DisposeAsync().AsTask();
-}
-
-/// <summary>
-/// WebApplicationFactory that wires up the app against the Testcontainer Postgres.
-/// </summary>
-public sealed class TaskFlowFactory : WebApplicationFactory<Program>, IAsyncLifetime
-{
-    private readonly DatabaseFixture _db = new();
-
-    public string ConnectionString => _db.ConnectionString;
-
+    
     public async Task InitializeAsync()
     {
-        await _db.InitializeAsync();
+        await _postgres.StartAsync();
 
-        // Inject the container's connection details as env vars before the host starts
-        var cs = _db.ConnectionString;
-        // Parse the Npgsql connection string into individual vars the app expects
-        var builder = new Npgsql.NpgsqlConnectionStringBuilder(cs);
-        Environment.SetEnvironmentVariable("DB_HOST",  builder.Host);
-        Environment.SetEnvironmentVariable("DB_PORT",  (builder.Port).ToString());
-        Environment.SetEnvironmentVariable("DB_NAME",  builder.Database);
-        Environment.SetEnvironmentVariable("DB_USER",  builder.Username);
-        Environment.SetEnvironmentVariable("DB_PASS",  builder.Password);
+        
+        var cs = new Npgsql.NpgsqlConnectionStringBuilder(_postgres.GetConnectionString());
+        Environment.SetEnvironmentVariable("DB_HOST",  cs.Host);
+        Environment.SetEnvironmentVariable("DB_PORT",  cs.Port.ToString());
+        Environment.SetEnvironmentVariable("DB_NAME",  cs.Database);
+        Environment.SetEnvironmentVariable("DB_USER",  cs.Username);
+        Environment.SetEnvironmentVariable("DB_PASS",  cs.Password);
         Environment.SetEnvironmentVariable("JWT_SECRET", "integration-test-super-secret-key-32ch");
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
     }
 
+    
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
-            // Replace the real repositories with ones pointing at the test container
-            var cs = _db.ConnectionString;
-            var npgsqlCs = new Npgsql.NpgsqlConnectionStringBuilder(cs);
-            var connStr = $"Host={npgsqlCs.Host};Port={npgsqlCs.Port};Database={npgsqlCs.Database};Username={npgsqlCs.Username};Password={npgsqlCs.Password}";
+            var cs = new Npgsql.NpgsqlConnectionStringBuilder(_postgres.GetConnectionString());
+            var connStr = $"Host={cs.Host};Port={cs.Port};Database={cs.Database};Username={cs.Username};Password={cs.Password}";
 
+            
             services.AddScoped(_ => new AuthRepository(connStr));
             services.AddScoped<IProjectService>(_ => new ProjectRepository(connStr));
         });
@@ -70,13 +50,10 @@ public sealed class TaskFlowFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public new async Task DisposeAsync()
     {
-        await _db.DisposeAsync();
         await base.DisposeAsync();
+        await _postgres.DisposeAsync();
     }
 }
 
-/// <summary>
-/// xUnit collection definition — all tests in [Collection("Integration")] share one factory.
-/// </summary>
 [CollectionDefinition("Integration")]
 public sealed class IntegrationCollection : ICollectionFixture<TaskFlowFactory> { }

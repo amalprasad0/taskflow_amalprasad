@@ -12,7 +12,7 @@ public sealed class AuthorizationTests(TaskFlowFactory factory) : IntegrationTes
     public async Task DeleteTask_AsNonOwner_Returns403()
     {
         var ownerJwt = await RegisterAndLoginAsync(
-            UniqueEmail("owner"), "P@ssword123!", $"owner_{Guid.NewGuid():N[..8]}");
+            UniqueEmail("owner"), "P@ssword123!", $"owner_{Guid.NewGuid().ToString("N")[..8]}");
         AuthenticatedClient(ownerJwt);
 
         var createProjResp = await Client.PostAsJsonAsync("/projects", new
@@ -38,7 +38,7 @@ public sealed class AuthorizationTests(TaskFlowFactory factory) : IntegrationTes
         var taskId   = taskData.GetProperty("taskId").GetString()!;
 
         var nonOwnerJwt = await RegisterAndLoginAsync(
-            UniqueEmail("nonowner"), "P@ssword123!", $"nonowner_{Guid.NewGuid():N[..8]}");
+            UniqueEmail("nonowner"), "P@ssword123!", $"nonowner_{Guid.NewGuid().ToString("N")[..8]}");
         AuthenticatedClient(nonOwnerJwt); 
 
         var deleteResp = await Client.DeleteAsync($"/task/{taskId}");
@@ -51,7 +51,7 @@ public sealed class AuthorizationTests(TaskFlowFactory factory) : IntegrationTes
     public async Task DeleteTask_AsOwner_Succeeds()
     {
         var ownerJwt = await RegisterAndLoginAsync(
-            UniqueEmail("delowner"), "P@ssword123!", $"delowner_{Guid.NewGuid():N[..8]}");
+            UniqueEmail("delowner"), "P@ssword123!", $"delowner_{Guid.NewGuid().ToString("N")[..8]}");
         AuthenticatedClient(ownerJwt);
 
         var projResp = await Client.PostAsJsonAsync("/projects", new

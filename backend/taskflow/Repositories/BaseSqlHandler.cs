@@ -276,5 +276,22 @@ namespace taskFlow.Repositories
                 command.Parameters.AddWithValue(prop.Name, value ?? DBNull.Value);
             }
         }
+
+        /// <summary>
+        /// Opens a connection, executes the query, and passes the reader to the provided delegate.
+        /// Useful for reading non-standard column types (e.g. JSONB) that reflection-based mapping cannot handle.
+        /// </summary>
+        protected async Task<TResult?> QueryWithReaderAsync<TResult>(string sql, object? parameters, Func<NpgsqlDataReader, Task<TResult?>> process)
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new NpgsqlCommand(sql, connection);
+
+            if (parameters != null)
+                AddParameters(command, parameters);
+
+            using var reader = await command.ExecuteReaderAsync();
+            return await process(reader);
+        }
     }
 }

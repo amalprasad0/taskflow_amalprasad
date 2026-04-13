@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using taskFlow.Exceptions;
 using taskFlow.Interfaces;
 using taskFlow.Models;
@@ -397,10 +398,7 @@ namespace taskFlow.Repositories
             {
                 throw;
             }
-            catch (KeyNotFoundException)
-            {
-                throw;
-            }
+            
             catch (Exception ex)
             {
                 Console.WriteLine($"Error updating task: {ex.Message}");
@@ -471,61 +469,68 @@ namespace taskFlow.Repositories
         {
             try
             {
-                const string checkSql = @"
-                    SELECT
-                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId)                        AS ""Exists"",
-                        EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId AND owner_id = @UserId) AS ""IsAuthorized"";
-                ";
-                var checkResult = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { ProjectId = projectId, UserId = userId });
+                // const string checkSql = @"
+                //     SELECT
+                //         EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId)                        AS ""Exists"",
+                //         EXISTS (SELECT 1 FROM projects WHERE id = @ProjectId AND owner_id = @UserId) AS ""IsAuthorized"";
+                // ";
+                // var checkResult = await QuerySingleAsync<DeleteProjectResult>(checkSql, new { ProjectId = projectId, UserId = userId });
 
-                if (checkResult != null && !checkResult.Exists)
-                    throw new KeyNotFoundException("Project not found");
-                if (checkResult != null && !checkResult.IsAuthorized)
-                    throw new ForbiddenException("You do not have permission to view stats for this project");
+                // if (checkResult != null && !checkResult.Exists)
+                //     throw new KeyNotFoundException("Project not found");
+                // if (checkResult != null && !checkResult.IsAuthorized)
+                //     throw new ForbiddenException("You do not have permission to view stats for this project");
 
                 var sql = @"
                 SELECT 
                     (
-                        SELECT jsonb_object_agg(status, count)
+                        SELECT jsonb_object_agg(status, count)::text
                         FROM (
-                            SELECT status, COUNT(*) AS count 
+                            SELECT CAST(status AS text) AS status, COUNT(*) AS count 
                             FROM tasks 
-                            WHERE project_id = @ProjectId         -- ✅ Fixed: was hardcoded GUID
+                            WHERE project_id = @ProjectId
                             GROUP BY status
                         ) AS status_counts
                     ) AS TasksPerStatus,
 
                     (
-                        SELECT jsonb_object_agg(priority, count)
+                        SELECT jsonb_object_agg(priority, count)::text
                         FROM (
-                            SELECT priority, COUNT(*) AS count 
+                            SELECT CAST(priority AS text) AS priority, COUNT(*) AS count 
                             FROM tasks 
-                            WHERE project_id = @ProjectId         -- ✅ Fixed: was hardcoded GUID
+                            WHERE project_id = @ProjectId
                             GROUP BY priority
                         ) AS priority_counts
                     ) AS TasksPerPriority,
 
                     (
-                        SELECT jsonb_object_agg(name, count)
+                        SELECT jsonb_object_agg(name, count)::text
                         FROM (
                             SELECT 
                                 COALESCE(u.name, 'Unassigned') AS name,
                                 COUNT(*) AS count 
                             FROM tasks t 
                             LEFT JOIN users u ON t.assignee_id = u.id 
-                            WHERE t.project_id = @ProjectId       -- ✅ Fixed: was hardcoded GUID
+                            WHERE t.project_id = @ProjectId
                             GROUP BY name
                         ) AS assignee_counts
                     ) AS TasksPerAssignee
                 ";
 
-                // ✅ QueryAsync<StatsDto> now works because TypeHandler handles JSONB deserialization
-                var statsResult = await QuerySingleAsync<StatsDto>(sql, new { ProjectId = projectId });
+                var statsResult = await QueryWithReaderAsync<StatsDto>(sql, new { ProjectId = projectId }, async reader =>
+                {
+                    if (!await reader.ReadAsync())
+                        throw new KeyNotFoundException("Project not found or no tasks available for statistics");
 
-                if (statsResult == null)
-                    throw new KeyNotFoundException("Project not found or no tasks available for statistics");
+                    return new StatsDto
+                    {
+                        TasksPerStatus   = DeserializeJsonbColumn<Dictionary<string, int>>(reader, "TasksPerStatus"),
+                        TasksPerPriority = DeserializeJsonbColumn<Dictionary<string, int>>(reader, "TasksPerPriority"),
+                        TasksPerAssignee = DeserializeJsonbColumn<Dictionary<string, int>>(reader, "TasksPerAssignee"),
+                    };
+                });
 
-                return Response<StatsDto>.Success(statsResult, "Project statistics retrieved successfully");
+                return Response<StatsDto>.Success(statsResult!, "Project statistics retrieved successfully");
             }
             catch (KeyNotFoundException)
             {
@@ -629,6 +634,17 @@ namespace taskFlow.Repositories
             {
                 throw new InvalidOperationException("An unexpected error occurred while updating the project", ex);
             }
+        }
+        private static TResult? DeserializeJsonbColumn<TResult>(NpgsqlDataReader reader, string columnName)
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ordinal))
+                return default;
+            var json = reader.GetString(ordinal);
+            return JsonSerializer.Deserialize<TResult>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
         }
     }
 }

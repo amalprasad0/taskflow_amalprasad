@@ -205,3 +205,6 @@ void RunMigrations(IConfiguration config)
         Environment.Exit(1);
     }
 }
+
+// Required for WebApplicationFactory in integration tests
+public partial class Program { }

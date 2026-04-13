@@ -475,7 +475,7 @@ namespace taskFlow.Repositories
                 throw new InvalidOperationException("An unexpected error occurred while deleting the task", ex);
             }
         }
-        public async Task<Response<UpdateProjectResult>> UpdateProject(UpdateProjectDataDto updateProjectDataDto, Guid projectId, Guid userId)
+        public async Task<Response<UpdateProjectResultDto>> UpdateProject(UpdateProjectDataDto updateProjectDataDto, Guid projectId, Guid userId)
         {
             try
             {
@@ -506,7 +506,7 @@ namespace taskFlow.Repositories
                 if (result is null || result == DBNull.Value)
                     throw new InvalidOperationException("Update failed unexpectedly");
 
-                return Response<UpdateProjectResult>.Success(new UpdateProjectResult { IsUpdated = true }, "Project updated successfully");
+                return Response<UpdateProjectResultDto>.Success(new UpdateProjectResultDto { IsUpdated = true }, "Project updated successfully");
             }
             catch (KeyNotFoundException)
             {

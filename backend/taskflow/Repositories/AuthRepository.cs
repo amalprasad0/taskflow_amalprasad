@@ -9,12 +9,21 @@ namespace taskFlow.Repositories
     {
         public AuthRepository(string connectionString) : base(connectionString)
         {
+
         }
 
         public async Task<Response<bool>> Register(RegisterUserDto userDto)
         {
-            if (userDto == null || string.IsNullOrWhiteSpace(userDto.Email) || string.IsNullOrWhiteSpace(userDto.Password))
-                throw new ValidationException("Email and password are required");
+            if (userDto == null || string.IsNullOrWhiteSpace(userDto.Email) || string.IsNullOrWhiteSpace(userDto.Password) || string.IsNullOrWhiteSpace(userDto.Username))
+                throw new ValidationException("Email, username, and password are required");
+
+            var emailExistsCheck = await ExecuteScalarAsync("SELECT EXISTS(SELECT 1 FROM users WHERE email = @Email)", new { Email = userDto.Email });
+            if (emailExistsCheck is bool emailExists && emailExists)
+                throw new ValidationException("User with this email already exists");
+
+            var nameExistsCheck = await ExecuteScalarAsync("SELECT EXISTS(SELECT 1 FROM users WHERE name = @Name)", new { Name = userDto.Username });
+            if (nameExistsCheck is bool nameExists && nameExists)
+                throw new ValidationException("User with this username already exists");
 
             var sql = @"
                 INSERT INTO users (id, name, email, password, created_at) 
@@ -53,7 +62,7 @@ namespace taskFlow.Repositories
             return users.FirstOrDefault();
         }
 
-        public async Task<Response<string?>> Login(LoginUserDto loginDto)
+        public async Task<Response<LoginResponseDto>> Login(LoginUserDto loginDto)
         {
             if (loginDto == null || string.IsNullOrWhiteSpace(loginDto.Email) || string.IsNullOrWhiteSpace(loginDto.Password))
                 throw new ValidationException("Email and password are required");
@@ -65,7 +74,8 @@ namespace taskFlow.Repositories
                     throw new UnauthorizedAccessException("Invalid credentials");
 
                 var token = JwtHandler.GenerateToken(user.Id.ToString(), user.Email ?? string.Empty);
-                return Response<string?>.Success(token, "Login successful");
+                var loginResponse = new LoginResponseDto { accessToken = token };
+                return Response<LoginResponseDto>.Success(loginResponse, "Login successful");
             }
             catch (UnauthorizedAccessException)
             {

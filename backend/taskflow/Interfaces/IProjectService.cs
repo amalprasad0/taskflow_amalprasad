@@ -16,7 +16,7 @@ namespace taskFlow.Interfaces
         public  Task<Response<Guid>> DeleteTask(Guid taskId,Guid userId);
         public Task<Response<StatsDto>> GetProjectStats(Guid projectId);
         public  Task<Response<Boolean>> DeleteProject(Guid projectId,Guid userId);
-        public  Task<Response<UpdateProjectResult>> UpdateProject(UpdateProjectDataDto updateProjectDataDto,Guid projectId,Guid userId);
+        public  Task<Response<UpdateProjectResultDto>> UpdateProject(UpdateProjectDataDto updateProjectDataDto,Guid projectId,Guid userId);
 
     }
 }

@@ -24,6 +24,12 @@ namespace taskFlow.Middleware
             try
             {
                 await _next(context);
+
+                if (context.Response.StatusCode == 404 && !context.Response.HasStarted)
+                {
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync("{\"error\":\"Not found\"}");
+                }
             }
             catch (Exception ex)
             {
@@ -33,56 +39,38 @@ namespace taskFlow.Middleware
 
         private async Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
-            var statusCode = HttpStatusCode.InternalServerError;
-            var title = "Internal server error";
-            var errorType = exception.GetType().Name;
-            var message = "An unexpected error occurred. Please try again later.";
-
-            switch (exception)
-            {
-                case ValidationException validationException:
-                    statusCode = HttpStatusCode.BadRequest;
-                    title = "Validation failed";
-                    message = validationException.Message;
-                    break;
-                case KeyNotFoundException notFoundException:
-                    statusCode = HttpStatusCode.NotFound;
-                    title = "Resource not found";
-                    message = notFoundException.Message;
-                    break;
-                case ForbiddenException forbiddenException:
-                    statusCode = HttpStatusCode.Forbidden;
-                    title = "Forbidden";
-                    message = forbiddenException.Message;
-                    break;
-                case UnauthorizedAccessException unauthorizedException:
-                    statusCode = HttpStatusCode.Unauthorized;
-                    title = "Unauthorized";
-                    message = unauthorizedException.Message;
-                    break;
-            }
-
             _logger.LogError(exception, "Unhandled exception while processing request {Method} {Path}: {ErrorType}",
                 context.Request.Method,
                 context.Request.Path,
-                errorType);
-
-            var errorResponse = new ErrorResponse(
-                Status: false,
-                Message: message,
-                Error: new ErrorDetail(errorType, title, message),
-                TraceId: context.TraceIdentifier);
+                exception.GetType().Name);
 
             context.Response.ContentType = "application/json";
-            context.Response.StatusCode = (int)statusCode;
 
-            var options = new JsonSerializerOptions
+            switch (exception)
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = false
-            };
-
-            await context.Response.WriteAsync(JsonSerializer.Serialize(errorResponse, options));
+                case KeyNotFoundException:
+                    context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+                    await context.Response.WriteAsync("{\"error\":\"Not found\"}");
+                    return;
+                case ForbiddenException:
+                    context.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+                    await context.Response.WriteAsync("{\"error\":\"forbidden\"}");
+                    return;
+                case UnauthorizedAccessException:
+                    context.Response.StatusCode = (int)HttpStatusCode.Unauthorized;
+                    await context.Response.WriteAsync("{\"error\":\"unauthorized\"}");
+                    return;
+                case ValidationException validationException:
+                    context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                    await context.Response.WriteAsync(JsonSerializer.Serialize(
+                        new { error = validationException.Message },
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+                    return;
+                default:
+                    context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    await context.Response.WriteAsync("{\"error\":\"An unexpected error occurred. Please try again later.\"}");
+                    return;
+            }
         }
 
         private sealed record ErrorDetail(string Type, string Title, string Detail);

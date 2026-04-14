@@ -12,7 +12,8 @@ A task management REST API built with ASP.NET Core 8, PostgreSQL, and Docker.
 4. [Running Migrations](#4-running-migrations)
 5. [Test Credentials](#5-test-credentials)
 6. [API Reference](#6-api-reference)
-7. [What I'd Do With More Time](#7-what-id-do-with-more-time)
+7. [Integration Tests](#7-integration-tests)
+8. [What I'd Do With More Time](#8-what-id-do-with-more-time)
 
 ---
 
@@ -24,13 +25,13 @@ TaskFlow is a minimal task management system that lets users register, log in, c
 
 | Layer | Technology |
 |---|---|
-| Language | C# / .NET 8 |
+| Language | C# / .NET 10.0 |
 | Framework | ASP.NET Core Web API |
 | Database | PostgreSQL 16 |
 | ORM / Query | Dapper (raw SQL) |
 | Auth | JWT Bearer (HS256, 24h expiry) |
 | Password hashing | BCrypt.Net-Next (cost 12) |
-| Migrations | Flyway-style versioned SQL files (V001, V002, V003) |
+| Migrations | Flyway-style versioned SQL files (V001, V002, V003) and Evolve Package |
 | Validation | FluentValidation |
 | Logging | Serilog (structured JSON) |
 | Containerisation | Docker + Docker Compose |
@@ -49,21 +50,23 @@ Controllers  →  Services  →  Repositories  →  PostgreSQL
   DTOs/Validation   Models
 ```
 
-- **Controllers** handle HTTP concerns only — request parsing, response shaping, status codes.
-- **Services** own business logic — ownership checks, permission enforcement, cascade operations.
-- **Repositories** own all SQL — one repository per aggregate root (UserRepository, ProjectRepository, TaskRepository).
-- **DTOs** are separate from domain models so API shape and DB shape can evolve independently.
+- ## Backend Architecture
+
+This project uses a streamlined N-Tier architecture, utilizing "Fat Repositories" to reduce boilerplate and keep things simple:
+
+* **Controllers:** Handle HTTP concerns only—request routing, extracting authentication tokens, and formatting HTTP responses.
+* **Fat Repositories:** Serve as both the business logic and data access layer. They implement domain interfaces (e.g., `IProjectService`) and handle both raw SQL queries (via Dapper) and business rules (ownership checks, permission enforcement).
+* **DTOs:** Completely isolated from domain models, allowing the API contract and database shape to evolve independently.
+* **Infrastructure Services:** The `Services` folder is strictly reserved for infrastructural helpers (e.g., JWT generation, password hashing) rather than domain business logic.
+
 
 ### Why Dapper over EF Core
-
 Raw SQL gives explicit control over query shape. For this project, several queries require JOINs and GROUP BY that would generate inefficient SQL through EF Core's LINQ translation. Dapper keeps the queries readable and reviewable.
 
 ### Why versioned SQL migrations (not auto-migrate)
-
-The spec explicitly disqualifies auto-migrate. SQL migration files (V001__create_users.sql, etc.) are version-controlled, deterministic, and include both up and down directions. The migration runner applies them in order on container startup.
+The spec explicitly disqualifies auto-migrate. SQL migration files (V001__create_users.sql, etc.) are version-controlled, deterministic, and strictly forward-moving. The migration runner applies them in order on container startup.
 
 ### JWT claims
-
 Token payload: `user_id` (UUID) and `email`. The `user_id` claim is extracted in a shared middleware and injected into `HttpContext.Items` so controllers never re-parse the token.
 
 ### Intentionally left out
@@ -81,7 +84,7 @@ Token payload: `user_id` (UUID) and `email`. The `user_id` claim is extracted in
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-username/taskflow-amal-prasad
+git clone https://github.com/amalprasad0/taskflow_amalprasad.git
 cd taskflow-amal-prasad
 
 # 2. Copy environment file
@@ -161,18 +164,22 @@ All responses are `Content-Type: application/json`. All non-auth endpoints requi
 ```json
 // Request
 {
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "password": "secret123"
+    "Username":"jane.doe",
+    "Email":"jane@example.com",
+    "Password":"j@ne1243"
 }
-
 // Response 201
 {
-  "id": "a1b2c3d4-...",
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "createdAt": "2026-04-14T10:00:00Z"
+    "message": "User registered successfully",
+    "status": true,
+    "data":{
+      "id": "a1b2c3d4-...",
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "createdAt": "2026-04-14T10:00:00Z"
+          }
 }
+
 ```
 
 #### POST /auth/login
@@ -186,12 +193,11 @@ All responses are `Content-Type: application/json`. All non-auth endpoints requi
 
 // Response 200
 {
-  "token": "<jwt>",
-  "user": {
-    "id": "a1b2c3d4-...",
-    "name": "Jane Doe",
-    "email": "jane@example.com"
-  }
+    "message": "Login successful",
+    "status": true,
+    "data": {
+        "accessToken": "eyJhbGciOiJIUzI1N......o"
+    }
 }
 ```
 
@@ -206,15 +212,17 @@ Returns projects the current user owns **or** has tasks assigned in.
 ```json
 // Response 200
 {
-  "projects": [
-    {
-      "id": "uuid",
-      "name": "Website Redesign",
-      "description": "Q2 project",
-      "ownerId": "uuid",
-      "createdAt": "2026-04-01T10:00:00Z"
-    }
-  ]
+    "message": "Projects retrieved successfully",
+    "status": true,
+    "data": [
+        {
+            "id": "770046fa-18e6-4803-95af-81d74fcfa1bf",
+            "name": "Backend Project3",
+            "description": "Development of taskflow",
+            "createdAt": "2026-04-13T20:36:20.123678Z",
+            "ownerId": "f4550ae0-babd-40b4-a1f2-4d6f630dc132"
+        }
+    ]
 }
 ```
 
@@ -225,21 +233,81 @@ Returns projects the current user owns **or** has tasks assigned in.
 { "name": "New Project", "description": "Optional" }
 
 // Response 201
-{ "id": "uuid", "name": "New Project", "description": "Optional", "ownerId": "uuid", "createdAt": "..." }
+{
+    "message": "Project created successfully",
+    "status": true,
+    "data": {
+        "projectId": "770046fa-18e6-4803-95af-81d74fcfa1bf"
+    }
+}
 ```
 
 #### GET /projects/:id
 
 Returns project details + all tasks. Returns 403 if user has no access, 404 if not found.
-
+```json
+// Response 200
+{
+    "message": "Project with tasks retrieved successfully",
+    "status": true,
+    "data": {
+        "id": "770046fa-18e6-4803-95af-81d74fcfa1bf",
+        "name": "Backend Project3",
+        "description": "Development of taskflow",
+        "createdAt": "2026-04-13T20:36:20.123678Z",
+        "ownerId": "f4550ae0-babd-40b4-a1f2-4d6f630dc132",
+        "ownerName": "jane.doe",
+        "tasks": [
+            {
+                "id": "45b44b76-c135-4871-a180-e709f25f7f06",
+                "name": "Test Tasks",
+                "description": "Test Task 12344",
+                "status": "todo",
+                "priority": "high",
+                "projectId": "770046fa-18e6-4803-95af-81d74fcfa1bf",
+                "assigneeId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+                "createdAt": "2026-04-13T20:36:42.943689Z",
+                "updatedAt": "2026-04-13T20:36:42.94369Z",
+                "dueDate": "2026-04-20T00:00:00",
+                "assigneeName": "Test User",
+                "ownerName": null
+            }
+        ]
+    }
+}
+```
 #### PATCH /projects/:id
 
 Owner only. Accepts partial updates to `name` and/or `description`. Returns 403 if not owner.
+```json
+// Request 
+{
+   "Name": "{{projectName}}",
+   "Description": "{{projectDescription}}"
+}
 
+// Response 200
+{
+    "message": "Project updated successfully",
+    "status": true,
+    "data": {
+        "isUpdated": true
+    }
+}
+```
 #### DELETE /projects/:id
 
 Owner only. Cascades to delete all tasks. Returns 204 on success.
-
+```json
+Response 200
+{
+    "message": "Project deleted successfully",
+    "status": true,
+    "data": {
+        "isDeleted": true
+    }
+}
+```
 ---
 
 ### Tasks
@@ -258,14 +326,24 @@ Supports query filters:
 ```json
 // Request
 {
-  "title": "Design homepage",
-  "description": "Wireframes first",
-  "priority": "high",
+  "title": "Test Tasks",
+  "description": "Test Task 1234",
   "assigneeId": "uuid",
-  "dueDate": "2026-04-30"
+  "dueDate": "2026-04-20T12:00:00Z",
+  "priority": "high",
+  "status": "todo",
+  "createdAt": "2026-04-12T10:00:00Z",
+  "updatedDateAt": "2026-04-12T10:00:00Z"
 }
 
-// Response 201 — returns full task object
+// Response 201 — returns task id
+{
+    "message": "Task created successfully",
+    "status": true,
+    "data": {
+        "taskId": "45b44b76-c135-4871-a180-e709f25f7f06"
+    }
+}
 ```
 
 #### PATCH /tasks/:id
@@ -277,12 +355,49 @@ All fields are optional (true PATCH semantics):
 { "status": "done", "priority": "low" }
 
 // Response 200 — returns updated task
+{
+    "message": "Task updated successfully",
+    "status": true,
+    "data": {
+        "taskId": "49737ae1-c945-426e-bafd-681902a1f9d7"
+    }
+}
 ```
 
 #### DELETE /tasks/:id
 
 Allowed for: project owner OR the user who created the task. Returns 204.
+```json
+Response 200
+{
+    "message": "Project deleted successfully",
+    "status": true,
+    "data": {
+        "isDeleted": true
+    }
+}
+```
+#### GET /project/{{projectId}}/stats
 
+Retunrs the stats of project Returns 200.
+```json
+Response 200
+{
+    "message": "Project statistics retrieved successfully",
+    "status": true,
+    "data": {
+        "tasksPerStatus": {
+            "todo": 1 // Status
+        },
+        "tasksPerPriority": {
+            "high": 1 //Priority
+        },
+        "tasksPerAssignee": {
+            "Test User": 1 //Assignee
+        }
+    }
+}
+```
 ---
 
 ### Error responses
@@ -291,36 +406,95 @@ All errors follow a consistent shape:
 
 ```json
 // 400 — Validation failure
-{ "error": "validation failed", "fields": { "email": "is required" } }
-
+{
+    "status": false,
+    "message": "Email and password are required",
+    "error": {
+        "type": "ValidationException",
+        "title": "Validation failed",
+        "detail": "Email and password are required"
+    },
+    "traceId": "0HNKPRAQVGBRB:00000001"
+}
 // 401 — Missing or invalid token
 { "error": "unauthorized" }
 
 // 403 — Valid token, insufficient permission
 { "error": "forbidden" }
 
-// 404 — Resource does not exist
-{ "error": "not found" }
+// 200 — Resource does not exist
+{
+    "status": false,
+    "message": "Task not found",
+    "error": {
+        "type": "KeyNotFoundException",
+        "title": "Resource not found",
+        "detail": "Task not found"
+    },
+    "traceId": "0HNKPIG19KFGG:00000017"
+}
+
+
 ```
 
 > A full Postman collection is included at `/postman/TaskFlow.postman_collection.json`. Import it and set the `baseUrl` (default: `http://localhost:5000`) and `token` environment variables.
 
 ---
 
-## 7. What I'd Do With More Time
+## 7. Integration Tests
+
+Tests run against a real PostgreSQL instance spun up via **Testcontainers** — no mocks, no in-memory database.
+
+### Prerequisites
+
+- **Docker** must be running (Testcontainers pulls `postgres:16-alpine` automatically)
+
+### Run
+
+```bash
+dotnet test taskflow.IntegrationTests
+```
+
+### Stack
+
+| Tool | Purpose |
+|------|---------|
+| **xUnit** | Test framework |
+| **Testcontainers.PostgreSql** | Disposable Postgres container per test collection |
+| **WebApplicationFactory** | In-process ASP.NET Core server (no network, no port binding) |
+| **FluentAssertions** | Readable assertion syntax |
+| **Coverlet** | Code coverage collection |
+
+### How it works
+
+`TaskFlowFactory` extends `WebApplicationFactory<Program>`. On startup it:
+1. Spins up a Postgres container
+2. Injects the container's connection string via environment variables
+3. The app's Evolve migrations run automatically, creating the schema from scratch
+
+All test classes share the same container via `[Collection("Integration")]` and `ICollectionFixture<TaskFlowFactory>`.
+
+### Test suites
+
+| File | Covers |
+|------|--------|
+| `AuthFlowTests` | Register → Login → JWT return, duplicate email rejection, wrong password 401 |
+| `AuthorizationTests` | 401 without JWT, 403 when non-owner deletes a task, owner delete succeeds |
+| `ProjectFlowTests` | Create project → create task → verify via GET, 404 for unknown project ID |
+
+---
+
+## 8. What I'd Do With More Time
 
 **Shortcuts taken:**
 
 - No pagination on list endpoints — `GET /projects` and `GET /projects/:id/tasks` return all results. In production this would cause issues at scale.
-- No integration tests — only manual testing via Postman. The spec awards bonus points for integration tests (xUnit + WebApplicationFactory).
-- The stats endpoint (`GET /projects/:id/stats`) is not implemented — it was a bonus item that ran out of time budget.
 - Error messages from the DB layer (e.g. unique constraint violations) are caught generically rather than mapped to specific user-facing messages.
 
 **What I'd add:**
 
 - **Refresh tokens** — short-lived access tokens (15m) + long-lived refresh tokens stored in the DB, revocable on logout
 - **Pagination** — cursor-based pagination for tasks (more stable than offset for frequently-updated lists)
-- **Integration tests** — `WebApplicationFactory<Program>` + TestContainers for a real Postgres in CI
 - **Rate limiting** — `AspNetCoreRateLimit` on auth endpoints to prevent brute-force
 - **Soft deletes** — `deleted_at` timestamp instead of hard deletes, for audit trail
 - **Assignee validation** — currently accepts any UUID as assignee_id; should validate that the user is a member of the project
@@ -328,5 +502,3 @@ All errors follow a consistent shape:
 - **OpenAPI / Swagger UI** — auto-generated from controller attributes, replaces the manual Postman collection
 
 ---
-
-*Questions? See the assignment email or open a GitHub issue.*

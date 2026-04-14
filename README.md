@@ -1,6 +1,6 @@
 # TaskFlow API
 
-A task management REST API built with ASP.NET Core 8, PostgreSQL, and Docker.
+A task management REST API built with ASP.NET 10.0, PostgreSQL, and Docker.
 
 ---
 
@@ -36,7 +36,7 @@ TaskFlow is a minimal task management system that lets users register, log in, c
 | Logging | Serilog (structured JSON) |
 | Containerisation | Docker + Docker Compose |
 
-> **Note on language choice:** The assignment recommends Go, but this submission uses .NET 8 as permitted by the spec ("use a language you know well"). The architecture maps directly — handlers → controllers, middlewares → middleware pipeline, goroutines → async/await.
+> **Note on language choice:** The assignment recommends Go, but this submission uses .NET 10.0 as permitted by the spec ("use a language you know well"). The architecture maps directly — handlers → controllers, middlewares → middleware pipeline, goroutines → async/await.
 
 ---
 

@@ -13,7 +13,7 @@ namespace taskFlow.Repositories
 
         }
 
-        public async Task<Response<bool>> Register(RegisterUserDto userDto)
+        public async Task<Response<RegisterResultDto>> Register(RegisterUserDto userDto)
         {
             if (userDto == null || string.IsNullOrWhiteSpace(userDto.Email) || string.IsNullOrWhiteSpace(userDto.Password) || string.IsNullOrWhiteSpace(userDto.Username))
                 throw new ValidationException("Email, username, and password are required");
@@ -29,25 +29,29 @@ namespace taskFlow.Repositories
             var sql = @"
                 INSERT INTO users (id, name, email, password, created_at) 
                 VALUES (@Id, @Name, @Email, @Password, @CreatedAt)
+                RETURNING id, name, email, created_at AS CreatedAt;
             ";
 
             var hashedPassword = PasswordHasher.HashPassword(userDto.Password);
 
+            var id = Guid.NewGuid();
+            var createdAt = DateTime.UtcNow;
             var parameters = new
             {
-                Id = Guid.NewGuid(),
+                Id = id,
                 Name = userDto.Username,
                 Email = userDto.Email,
                 Password = hashedPassword,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = createdAt
             };
 
             try
             {
-                var rowsAffected = await ExecuteAsync(sql, parameters);
-                if (rowsAffected > 0)
-                    return Response<bool>.Success(true, "User registered successfully");
-                throw new InvalidOperationException("Failed to register user");
+                var user = await QuerySingleAsync<RegisterResultDto>(sql, parameters);
+                if (user == null)
+                    throw new InvalidOperationException("Failed to register user");
+
+                return Response<RegisterResultDto>.Success(user, "User registered successfully");
             }
             catch (Exception ex)
             {

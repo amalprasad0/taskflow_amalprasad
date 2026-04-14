@@ -437,7 +437,37 @@ All errors follow a consistent shape:
 
 ```
 
-> A full Postman collection is included at `/postman/TaskFlow.postman_collection.json`. Import it and set the `baseUrl` (default: `http://localhost:5000`) and `token` environment variables.
+### Postman Collection & Environments
+
+A ready-to-use Postman collection and two environment files are included in the project root:
+
+| File | Description |
+|------|-------------|
+| `Taskflow-api.postman_collection.json` | All API endpoints with pre-configured auth, body templates, and test scripts |
+| `TaskFlow-Dev.postman_environment.json` | Environment for local development (`dotnet run`) |
+| `Taskflow-docker-build.postman_environment.json` | Environment for Docker Compose setup |
+
+**Setup:**
+
+1. Open Postman → **Import** → select all 3 JSON files
+2. Select the appropriate environment (Dev or Docker)
+3. Set the `baseUrl` variable (e.g. `http://localhost:5000`)
+4. Run **Login** first — the test script auto-saves `accessToken` to the environment
+5. All other requests use `{{accessToken}}` automatically
+
+**Environment variables:**
+
+| Variable | Auto-set | Description |
+|----------|----------|-------------|
+| `baseUrl` | No | API base URL |
+| `accessToken` | ✅ on Login | JWT bearer token |
+| `projectId` | ✅ on CreateProject | Last created project ID |
+| `taskId` | ✅ on Create Task | Last created task ID |
+| `email` | No | Login email |
+| `password` | No | Login password |
+| `username` | No | Registration username |
+| `projectName` | No | Project name for create/update |
+| `projectDescription` | No | Project description for create/update |
 
 ---
 

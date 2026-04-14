@@ -71,7 +71,6 @@ builder.Services.AddControllers()
 
 builder.Services.AddOpenApi();
 
-// JWT Authentication
 var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? builder.Configuration["Jwt:Secret"] ?? "your-secret-key";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -107,13 +106,11 @@ builder.Services.AddScoped<IProjectService>(_ => new ProjectRepository(connectio
 
 var app = builder.Build();
 
-// Skip DB creation in integration tests — Testcontainers provides a ready-made DB.
 if (!environment.Equals("Testing", StringComparison.OrdinalIgnoreCase))
     EnsureDatabaseExists();
 
 RunMigrations(app.Configuration);
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -229,5 +226,4 @@ void RunMigrations(IConfiguration config)
     }
 }
 
-// Required for WebApplicationFactory in integration tests
 public partial class Program { }
